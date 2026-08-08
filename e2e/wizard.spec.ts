@@ -24,6 +24,9 @@ test("yeni projeden tekrarsız sonuç ekranına kesintisiz ilerler", async () =>
   await expect(page.getByRole("heading", { name: /Tek proje. Tekrarsız/i })).toBeVisible();
   await expect(page.getByText(/parametre \/ mühendislik koşulu/i)).toBeVisible();
   await expect(page.getByText("Efektif içsel sürtünme açısı").first()).toBeVisible();
+  await page.getByRole("tab", { name: /Deney programı/i }).click();
+  await expect(page.locator(".test-program-table .variant-list b").filter({ hasText: /^Zorunlu$/ }).first()).toBeVisible();
+  await expect(page.locator(".test-program-table .variant-list small").filter({ hasText: /^Kum Tabakası$/ }).first()).toBeVisible();
   await page.screenshot({ path: "test-results/gaia-result.png", fullPage: true });
   await application.close();
 });
