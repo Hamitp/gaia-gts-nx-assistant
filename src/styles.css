@@ -386,6 +386,25 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   .metric-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
 }
 
+@media (min-width: 881px) and (max-width: 1100px), (min-width: 881px) and (max-height: 620px) {
+  .landing-copy { padding: 28px 38px 62px; }
+  .gaia-mark { gap: 12px; }
+  .gaia-mark .mark-orbit { width: 37px; height: 37px; }
+  .gaia-mark strong { font-size: 26px; }
+  .gaia-mark small { font-size: 10px; }
+  .eyebrow { margin-top: 22px; font-size: 10px; }
+  .landing-copy h1 { margin: 14px 0 13px; font-size: 34px; line-height: 1.02; }
+  .landing-lead { font-size: 13px; line-height: 1.45; }
+  .landing-actions { margin-top: 18px; gap: 9px; }
+  .landing-actions .button-xl { min-height: 48px; padding-inline: 16px; font-size: 13px; }
+  .trust-row { margin-top: 15px; gap: 12px; font-size: 11px; }
+  .installed-pill { margin-top: 13px; }
+  .landing-footer { left: 38px; bottom: 17px; font-size: 10px; }
+  .hero-status { top: 24px; right: 24px; }
+  .floating-one { right: 20px; }
+  .floating-two { left: 20px; }
+}
+
 @media (max-width: 880px) {
   .landing-shell { display: block; padding: 0; }
   .landing-copy { max-width: none; margin: 0; padding: 42px 32px 90px; }
@@ -477,6 +496,13 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .condition-title p, .choice-card small, .toggle-card small { color: #50676d; font-size: 11px; }
 .gaia-mark small, .floating-card small, .landing-footer { color: #c2d7d8; font-size: 11px; }
 .landing-footer span { color: #e4c27a; }
+
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: 3px solid #fffef8;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 6px #08766e !important;
+}
+.toggle-card input:focus-visible + i { outline: 3px solid #fffef8; outline-offset: 2px; box-shadow: 0 0 0 6px #08766e; }
 
 @media (max-width: 980px) {
   .result-table td::before { content: attr(data-label); display: block; margin-bottom: 6px; color: #36545d; font-size: 10px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }

@@ -200,6 +200,7 @@ function Landing({ onNew, onOpen, installedVersion }: { onNew: () => void; onOpe
           <span><BookOpen size={15} /> Kaynak izlenebilir</span>
         </div>
         {installedVersion && <div className="installed-pill"><CheckCircle2 size={14} /> Bu bilgisayarda GTS NX {installedVersion} algılandı</div>}
+        <footer className="landing-footer">GAIA <span>•</span> Bilgi paketi {builtInKnowledge.manifest.version} <span>•</span> İnceleme sürümü</footer>
       </section>
       <section className="landing-visual" aria-label="Kaya katmanlarının içinden yükselen Gaia gravürü">
         <div className="gaia-hero" role="img" aria-label="Toprak, kökler ve kaya tabakalarıyla bütünleşen Gaia" />
@@ -208,7 +209,6 @@ function Landing({ onNew, onOpen, installedVersion }: { onNew: () => void; onOpe
         <div className="floating-card floating-two"><span className="float-icon"><Layers3 size={18} /></span><div><strong>Tekrarsız talepler</strong><small>Tüm analizler, tek liste</small></div><Check size={16} /></div>
         <div className="hero-inscription"><span>ΓΑΙΑ</span><div><strong>Toprağın belleğini oku.</strong><small>Kararı varsayıma değil, kanıta bağla.</small></div></div>
       </section>
-      <footer className="landing-footer">GAIA <span>•</span> Bilgi paketi {builtInKnowledge.manifest.version} <span>•</span> İnceleme sürümü</footer>
     </main>
   );
 }
