@@ -1,9 +1,20 @@
 import { _electron as electron, expect, test } from "@playwright/test";
 
 test("yeni projeden tekrarsız sonuç ekranına kesintisiz ilerler", async () => {
-  const application = await electron.launch({ args: ["."], cwd: process.cwd(), env: { ...process.env, NODE_ENV: "test" } });
+  const application = await electron.launch({ args: [".", "--force-device-scale-factor=1"], cwd: process.cwd(), env: { ...process.env, NODE_ENV: "test" } });
   const page = await application.firstWindow();
+  await page.setViewportSize({ width: 1440, height: 900 });
   await expect(page.getByRole("heading", { name: /Zemini doğru anlamak/i })).toBeVisible();
+  await expect(page.locator(".gaia-hero")).toBeVisible();
+  await expect.poll(() => page.locator(".gaia-hero").evaluate((element) => getComputedStyle(element).backgroundImage)).not.toBe("none");
+  await page.screenshot({ path: "test-results/gaia-landing.png", fullPage: true });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  await application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.webContents.setZoomFactor(2));
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await expect(page.locator(".landing-visual")).toBeHidden();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  await application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.webContents.setZoomFactor(1));
+  await page.setViewportSize({ width: 1440, height: 900 });
   await page.getByRole("button", { name: /Yeni proje/i }).click();
   await page.getByRole("textbox", { name: /^Proje adı/i }).fill("E2E Liman Projesi");
   await page.getByRole("button", { name: /Devam et/i }).click();
