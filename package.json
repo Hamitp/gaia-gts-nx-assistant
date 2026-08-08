@@ -1,0 +1,95 @@
+{
+  "name": "gaia-gts-nx-assistant",
+  "version": "0.1.0-review.1",
+  "private": true,
+  "author": "Hamit Parlak",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Hamitp/gaia-gts-nx-assistant.git"
+  },
+  "homepage": "https://github.com/Hamitp/gaia-gts-nx-assistant#readme",
+  "bugs": "https://github.com/Hamitp/gaia-gts-nx-assistant/issues",
+  "description": "GAIA - GTS NX geoteknik veri talep asistani",
+  "main": "dist-electron/electron/main.js",
+  "type": "module",
+  "scripts": {
+    "clean": "node -e \"const fs=require('fs'); for (const p of ['dist','dist-electron']) fs.rmSync(p,{recursive:true,force:true})\"",
+    "dev": "concurrently -k \"vite\" \"wait-on http://127.0.0.1:5173 && cross-env VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electron .\"",
+    "build": "npm run clean && tsc -p tsconfig.json && vite build && tsc -p electron/tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "npm run build && playwright test",
+    "test:exports": "npm run build && cross-env GAIA_SAMPLE_EXPORT_DIR=artifacts/verification electron . && node scripts/verify-exports.mjs artifacts/verification",
+    "verify": "npm run test && npm run build && npm run test:e2e",
+    "dist:win": "npm run verify && electron-builder --win nsis portable --publish never"
+  },
+  "dependencies": {
+    "docx": "9.7.1",
+    "exceljs": "4.4.0",
+    "lucide-react": "0.468.0",
+    "nanoid": "5.1.16",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.62.1",
+    "@testing-library/jest-dom": "6.9.1",
+    "@testing-library/react": "16.3.2",
+    "@types/adm-zip": "0.5.8",
+    "@types/node": "22.20.1",
+    "@types/react": "18.3.31",
+    "@types/react-dom": "18.3.7",
+    "@vitejs/plugin-react": "6.0.5",
+    "adm-zip": "0.6.0",
+    "concurrently": "9.2.4",
+    "cross-env": "7.0.3",
+    "electron": "43.3.0",
+    "electron-builder": "26.15.3",
+    "jsdom": "29.1.1",
+    "pdf-parse": "2.4.5",
+    "typescript": "5.9.3",
+    "vite": "8.2.1",
+    "vitest": "4.1.10",
+    "wait-on": "8.0.5"
+  },
+  "overrides": {
+    "uuid": "11.1.1"
+  },
+  "build": {
+    "appId": "com.denar.gaia",
+    "productName": "GAIA",
+    "asar": true,
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "electron/preload.cjs",
+      "package.json"
+    ],
+    "win": {
+      "signExecutable": false,
+      "icon": "assets/gaia-icon.ico",
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "artifactName": "GAIA-${version}-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "GAIA",
+      "installerIcon": "assets/gaia-icon.ico",
+      "uninstallerIcon": "assets/gaia-icon.ico",
+      "artifactName": "GAIA-Setup-${version}-${arch}.${ext}"
+    },
+    "portable": {
+      "artifactName": "GAIA-Portable-${version}-${arch}.${ext}"
+    }
+  }
+}

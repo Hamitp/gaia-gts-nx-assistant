@@ -1,0 +1,29 @@
+import { _electron as electron, expect, test } from "@playwright/test";
+
+test("yeni projeden tekrarsız sonuç ekranına kesintisiz ilerler", async () => {
+  const application = await electron.launch({ args: ["."], cwd: process.cwd(), env: { ...process.env, NODE_ENV: "test" } });
+  const page = await application.firstWindow();
+  await expect(page.getByRole("heading", { name: /Zemini doğru anlamak/i })).toBeVisible();
+  await page.getByRole("button", { name: /Yeni proje/i }).click();
+  await page.getByRole("textbox", { name: /^Proje adı/i }).fill("E2E Liman Projesi");
+  await page.getByRole("button", { name: /Devam et/i }).click();
+  await page.getByRole("button", { name: /Doğrusal olmayan statik/i }).click();
+  await page.getByRole("button", { name: /Yapım aşamalı analiz/i }).click();
+  await page.getByRole("button", { name: /^Dayanım azaltma yöntemi/i }).click();
+  await expect(page.locator(".selection-count").getByText("3", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: /Devam et/i }).click();
+  await page.getByLabel("1. birim adı").fill("Kum Tabakası");
+  await page.locator("select").first().selectOption("sand");
+  await page.getByRole("button", { name: /Devam et/i }).click();
+  await page.getByRole("button", { name: /Yaklaşık sabit/i }).click();
+  await page.getByRole("button", { name: /Her ikisi/i }).click();
+  await page.getByRole("button", { name: /Devam et/i }).click();
+  const modelContexts = page.locator(".model-context");
+  for (let index = 0; index < await modelContexts.count(); index += 1) await modelContexts.nth(index).locator(".model-card").first().click();
+  await page.getByRole("button", { name: /Devam et/i }).click();
+  await expect(page.getByRole("heading", { name: /Tek proje. Tekrarsız/i })).toBeVisible();
+  await expect(page.getByText(/parametre \/ mühendislik koşulu/i)).toBeVisible();
+  await expect(page.getByText("Efektif içsel sürtünme açısı").first()).toBeVisible();
+  await page.screenshot({ path: "test-results/gaia-result.png", fullPage: true });
+  await application.close();
+});
