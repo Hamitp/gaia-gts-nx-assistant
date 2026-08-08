@@ -8,6 +8,7 @@
 - DOCX, PDF ve XLSX çıktılarında kanonik kimlik ve parite denetimi
 - Atomik proje kaydı, imzalı bilgi paketi altyapısı ve sıkı Electron güven sınırı
 - Windows NSIS kurulum ve taşınabilir paket
+- İş ortamına uygun, özgün sinematik Gaia açılış görseli ve responsive iki panelli karşılama ekranı
 
 Bu sürüm, arayüz ve iş akışı incelemesi içindir. Yerleşik bilgi paketi bağımsız insan geoteknik uzman tarafından satır düzeyinde onaylanmadığından bütün çıktılar **İNCELEME TASLAĞI** olarak işaretlenir; resmî tasarım veya saha deney programı yayımlamak için kullanılmamalıdır.
 
