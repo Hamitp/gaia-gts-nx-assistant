@@ -574,5 +574,5 @@ export default function App() {
     else if (answer.error) setAppMessage(answer.error);
   };
   if (!project) return <><Landing onNew={() => setProject(newProject(knowledge))} onOpen={open} installedVersion={installedVersion} />{appMessage && <div className="toast" role="status"><AlertTriangle size={18} /><span>{appMessage}</span><button onClick={() => setAppMessage("")}><X size={15} /></button></div>}</>;
-  return <Wizard initialProject={project} knowledge={knowledge} installedVersion={installedVersion} onHome={() => setProject(null)} onKnowledgeChanged={setKnowledge} />;
+  return <Wizard initialProject={project} knowledge={knowledge} installedVersion={installedVersion} onHome={() => { window.scrollTo({ top: 0, behavior: "auto" }); setProject(null); }} onKnowledgeChanged={setKnowledge} />;
 }

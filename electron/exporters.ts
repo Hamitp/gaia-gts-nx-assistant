@@ -56,6 +56,13 @@ function parameterText(result: CanonicalResult, id: string): string {
   return parameter ? `${parameter.nameTr} / ${parameter.officialName} [${id}]` : id;
 }
 
+function testApplicabilityText(result: CanonicalResult, test: CanonicalResult["tests"][number]): string {
+  return test.applicability.map((use) => {
+    const units = use.groundUnitIds.map((id) => unitText(result, id)).join(", ") || "Proje geneli";
+    return `${trLevel[use.level]}: ${units}`;
+  }).join("; ");
+}
+
 function audit(result: CanonicalResult) {
   const canonicalExport = {
     appVersion: result.appVersion,
@@ -67,7 +74,7 @@ function audit(result: CanonicalResult) {
     project: { id: result.project.id, name: result.project.name, selectedAnalysisIds: [...result.project.selectedAnalysisIds].sort(), groundUnits: result.project.groundUnits.map((unit) => ({ id: unit.id, name: unit.name, soilType: unit.soilType })).sort((a, b) => a.id.localeCompare(b.id)) },
     warnings: [...result.warnings].sort(),
     requirements: result.requirements.map((item) => ({ id: item.id, parameterId: item.parameter.id, nameTr: item.parameter.nameTr, officialName: item.parameter.officialName, symbol: item.parameter.symbol, unit: item.parameter.unit, level: item.level, analysisIds: [...item.analysisIds].sort(), groundUnitIds: [...item.groundUnitIds].sort(), modelIds: [...item.modelIds].sort(), drainage: item.drainage, stiffnessBasis: item.stiffnessBasis, strengthBasis: item.strengthBasis, strengthState: item.strengthState, stressPath: item.stressPath, direction: item.direction, strainRange: item.strainRange, specimenCondition: item.specimenCondition, rawRequest: item.parameter.rawRequest })).sort((a, b) => a.id.localeCompare(b.id)),
-    tests: result.tests.map((item) => ({ id: item.id, methodId: item.method.id, nameTr: item.method.nameTr, standardPrimary: item.method.standardPrimary, parameterIds: [...item.parameterIds].sort(), requirementIds: [...item.requirementIds].sort(), analysisIds: [...item.analysisIds].sort(), groundUnitIds: [...item.groundUnitIds].sort(), rawDeliverables: [...item.method.rawDeliverables] })).sort((a, b) => a.id.localeCompare(b.id)),
+    tests: result.tests.map((item) => ({ id: item.id, methodId: item.method.id, nameTr: item.method.nameTr, standardPrimary: item.method.standardPrimary, parameterIds: [...item.parameterIds].sort(), requirementIds: [...item.requirementIds].sort(), analysisIds: [...item.analysisIds].sort(), groundUnitIds: [...item.groundUnitIds].sort(), applicability: item.applicability.map((use) => ({ requirementId: use.requirementId, level: use.level, analysisIds: [...use.analysisIds].sort(), groundUnitIds: [...use.groundUnitIds].sort() })).sort((a, b) => a.requirementId.localeCompare(b.requirementId)), rawDeliverables: [...item.method.rawDeliverables] })).sort((a, b) => a.id.localeCompare(b.id)),
   };
   const requirementTestLinks = canonicalExport.tests.flatMap((item) => item.requirementIds.map((requirementId) => `${requirementId}=>${item.id}`)).sort();
   return { requirementIds: canonicalExport.requirements.map((item) => item.id), testIds: canonicalExport.tests.map((item) => item.id), requirementTestLinks, engineeringUseAllowed: result.engineeringUseAllowed, resultSha256: sha256(canonicalJson(canonicalExport)) };

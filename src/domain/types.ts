@@ -176,6 +176,12 @@ export interface ConsolidatedTestRequest {
   requirementIds: string[];
   analysisIds: string[];
   groundUnitIds: string[];
+  applicability: Array<{
+    requirementId: string;
+    level: RequirementLevel;
+    analysisIds: string[];
+    groundUnitIds: string[];
+  }>;
 }
 
 export interface ModelRecommendation {

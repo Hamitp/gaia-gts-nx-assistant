@@ -273,6 +273,13 @@ export function consolidateTests(
         existing.requirementIds = unique([...existing.requirementIds, requirement.id]);
         existing.analysisIds = unique([...existing.analysisIds, ...requirement.analysisIds]);
         existing.groundUnitIds = unique([...existing.groundUnitIds, ...unitGroup.unitIds]);
+        const use = existing.applicability.find((item) => item.requirementId === requirement.id && item.level === requirement.level);
+        if (use) {
+          use.analysisIds = unique([...use.analysisIds, ...requirement.analysisIds]);
+          use.groundUnitIds = unique([...use.groundUnitIds, ...unitGroup.unitIds]);
+        } else {
+          existing.applicability.push({ requirementId: requirement.id, level: requirement.level, analysisIds: [...requirement.analysisIds], groundUnitIds: [...unitGroup.unitIds] });
+        }
       } else {
         map.set(key, {
           id: `TST-${stableId(key)}`,
@@ -281,6 +288,7 @@ export function consolidateTests(
           requirementIds: [requirement.id],
           analysisIds: [...requirement.analysisIds],
           groundUnitIds: [...unitGroup.unitIds],
+          applicability: [{ requirementId: requirement.id, level: requirement.level, analysisIds: [...requirement.analysisIds], groundUnitIds: [...unitGroup.unitIds] }],
         });
       }
       }
@@ -334,7 +342,9 @@ const methodProfiles: Record<string, {
   "ring-shear": { materials: ["soil"], drainage: ["drained"], strengthStates: ["residual"] },
   dss: { materials: ["soil"], drainage: ["undrained-total"], strengthStates: ["peak", "critical", "post-cyclic"] },
   "cyclic-triaxial": { materials: ["soil"] },
+  "resonant-column": { materials: ["soil"] },
   oedometer: { materials: ["soil"] },
+  "creep-oedometer": { materials: ["soil"] },
   crs: { materials: ["soil"] },
   permeability: { materials: ["soil"] },
   swcc: { materials: ["soil"] },
@@ -353,7 +363,10 @@ function selectTestMethods(requirement: ConsolidatedRequirement, materialClass: 
   if (!ids.length) return [];
   const candidates = ids.filter((id) => {
     const profile = methodProfiles[id];
-    return Boolean(profile && materialClass !== "unknown" && profile.materials.includes(materialClass));
+    if (!profile || materialClass === "unknown" || !profile.materials.includes(materialClass)) return false;
+    if (requirement.drainage !== "any" && profile.drainage && !profile.drainage.includes(requirement.drainage)) return false;
+    if (requirement.strengthState !== "any" && profile.strengthStates && !profile.strengthStates.includes(requirement.strengthState)) return false;
+    return true;
   });
   if (!candidates.length) return [];
   const usable = candidates;

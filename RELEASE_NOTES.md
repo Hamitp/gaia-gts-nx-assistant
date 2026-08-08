@@ -13,9 +13,8 @@ Bu sürüm, arayüz ve iş akışı incelemesi içindir. Yerleşik bilgi paketi 
 
 ## Doğrulama
 
-- 85/85 otomatik birim ve bileşen testi
+- 87/87 otomatik birim ve bileşen testi
 - Electron uçtan uca sihirbaz testi
 - DOCX/PDF/XLSX: 15 gereksinim ve 10 deney kimliği için geri-okuma paritesi
 - Kurulu NSIS uygulaması ve taşınabilir EXE duman testleri
 - Üretim bağımlılıkları dahil `npm audit`: 0 güvenlik açığı
-

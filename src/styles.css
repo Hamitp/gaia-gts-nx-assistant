@@ -452,6 +452,12 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .drawer-body h3, .method-list strong { font-size: 12px; }
 .drawer-body p, .drawer-body li, .method-list small, .alternative, .drawer-body dd { color: #465f66; font-size: 11px; }
 .drawer-body dt { color: #536a6f; font-size: 10px; }
+.analysis-card small { color: #3e6d69; font-size: 11px; }
+.analysis-card p { color: #50676d; font-size: 11px; }
+.analysis-card em { color: #704a16; font-size: 11px; }
+.condition-title p, .choice-card small, .toggle-card small { color: #50676d; font-size: 11px; }
+.gaia-mark small, .floating-card small, .landing-footer { color: #c2d7d8; font-size: 11px; }
+.landing-footer span { color: #e4c27a; }
 
 @media (max-width: 980px) {
   .result-table td::before { content: attr(data-label); display: block; margin-bottom: 6px; color: #36545d; font-size: 10px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }

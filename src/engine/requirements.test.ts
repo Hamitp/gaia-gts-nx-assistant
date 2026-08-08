@@ -146,6 +146,30 @@ describe("tüm parametrelerde anlamsal tekilleştirme", () => {
     expect(variants.find((item) => item.level === "required")?.groundUnitIds).toEqual(["GU-YES"]);
     expect(variants.find((item) => item.level === "conditional")?.groundUnitIds).toEqual(["GU-NO"]);
     expect(variants.find((item) => item.level === "missing-decision")?.groundUnitIds).toEqual(["GU-UNKNOWN"]);
+    const test = consolidateTests(consolidateRequirements(p, builtInKnowledge.payload), builtInKnowledge.payload, p)
+      .find((item) => item.parameterIds.includes("liquefaction-resistance"));
+    expect(test?.applicability.find((item) => item.level === "required")?.groundUnitIds).toEqual(["GU-YES"]);
+    expect(test?.applicability.find((item) => item.level === "conditional")?.groundUnitIds).toEqual(["GU-NO"]);
+    expect(test?.applicability.find((item) => item.level === "missing-decision")?.groundUnitIds).toEqual(["GU-UNKNOWN"]);
+  });
+
+  it("rezonant kolon ve uzun süreli ödometre profillerini birincil yöntem olarak kullanabilir", () => {
+    const dynamic = project(["equivalent-linear-2d"], [unitA]);
+    dynamic.conditions.dynamicLoading = true;
+    const dynamicProgram = consolidateTests(consolidateRequirements(dynamic, builtInKnowledge.payload), builtInKnowledge.payload, dynamic);
+    expect(dynamicProgram.find((item) => item.parameterIds.includes("modulus-reduction"))?.method.id).toBe("resonant-column");
+
+    const creepPayload = payloadFor("creep-index", [{ parameterId: "creep-index", level: "required" }]);
+    const creepProject = project(["a-0"], [unitB]);
+    expect(consolidateTests(consolidateRequirements(creepProject, creepPayload), creepPayload, creepProject)[0]?.method.id).toBe("creep-oedometer");
+  });
+
+  it("drenaj veya dayanım durumuyla açıkça uyumsuz tek yöntemi fail-closed reddeder", () => {
+    const payload = payloadFor("friction-angle-effective", [{ parameterId: "friction-angle-effective", level: "required", drainage: "undrained-effective", strengthState: "peak" }]);
+    payload.parameters = payload.parameters.map((item) => item.id === "friction-angle-effective" ? { ...item, preferredTestIds: ["direct-shear"] } : item);
+    const p = project(["a-0"], [unitA]);
+    const result = consolidateRequirements(p, payload);
+    expect(consolidateTests(result, payload, p).filter((item) => item.parameterIds.includes("friction-angle-effective"))).toHaveLength(0);
   });
 
   it("ertelenen model kararını tekrarsız karar veri paketi talebine dönüştürür", () => {
