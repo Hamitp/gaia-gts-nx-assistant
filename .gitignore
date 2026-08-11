@@ -6,6 +6,7 @@ coverage/
 test-results/
 playwright-report/
 artifacts/
+tmp/
 01- ek kaynaklar/
 *.log
 *.tmp

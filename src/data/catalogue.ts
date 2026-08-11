@@ -87,6 +87,13 @@ export const sources: SourceRef[] = [
     locator: "User-supplied DOCX/XLSX; seed inventory only, not an authoritative source",
     verifiedAt,
   },
+  {
+    id: "gaia-workflow-spec",
+    title: "GAIA kanonik talep ve karar iş akışı",
+    kind: "guidance",
+    locator: "Uygulama veri sözleşmesi; model kararı tamamlanamadığında fail-closed karar veri paketi",
+    verifiedAt: "2026-08-11",
+  },
 ];
 
 const test = (
@@ -180,7 +187,11 @@ export const parameters: ParameterDefinition[] = [
   parameter("site-stratigraphy", "Saha modeli", "Tabakalaşma ve jeoteknik birim modeli", "Geometry / Soil Profile", "—", "—", "project", "Jeolojik birimlerin sınırları, değişkenliği ve mühendislik davranışı bakımından ayrımıdır.", "Ağ geometrisi ve tüm malzeme atamalarının temelidir.", ["survey-borehole", "cptu"], "Koordinatlı sondaj/CPT logları, numune bilgileri, kesitler ve birim sınırı yorumlarını iletin."),
   parameter("coordinate-system", "Saha modeli", "Koordinat sistemi ve düşey datum", "Coordinate System / Datum", "—", "—", "project", "Tüm plan konumları ve kotların bağlı olduğu referanstır.", "Geometri, su seviyesi ve yük kotlarının yanlış hizalanmasını önler.", ["survey-borehole"], "EPSG/yerel sistem tanımı, röperler, düşey datum ve dönüşüm bilgilerini iletin."),
   parameter("groundwater", "Hidrojeoloji", "Yeraltı su seviyesi ve boşluk suyu basıncı", "Water Level / Pore Pressure", "u", "kPa, m", "project", "Zemindeki su basıncının kot ve zamana göre dağılımıdır.", "Etkin gerilme, sızma, konsolidasyon ve stabiliteyi doğrudan etkiler.", ["piezometer", "cptu"], "Datumlu ve tarihli ham ölçümler, filtre kotları, mevsimsel aralık ve ölçüm süresini iletin."),
-  parameter("model-decision-basis", "Model kararı", "Malzeme modeli karar veri paketi", "Constitutive Model Decision Basis", "—", "—", "ground-unit", "Analiz ve jeoteknik birim için uygun malzeme modelinin seçilebilmesini sağlayan sınıflandırma, gerilme geçmişi ve tam davranış verileridir.", "Model seçimi ertelendiğinde eksik kalabilecek model-özel girdilerin güvenle belirlenmesi için gerekir.", [], "Birim sınıflandırmasını, numune kalitesini, doygunluk ve drenaj koşullarını, gerilme geçmişini ve mevcut tüm gerilme–şekil değiştirme / hacim değişimi ham eğrilerini birlikte iletin.", ["Bu bir sayısal GTS NX parametresi değildir; açık model kararını tamamlamak için veri teslim paketidir."]),
+  {
+    ...parameter("model-decision-basis", "Model kararı", "Malzeme modeli karar veri paketi", "GAIA Model Decision Data Package — not a GTS NX input field", "—", "—", "ground-unit", "Analiz ve jeoteknik birim için uygun malzeme modelinin seçilebilmesini sağlayan sınıflandırma, gerilme geçmişi ve tam davranış verileridir.", "Model seçimi ertelendiğinde eksik kalabilecek model-özel girdilerin güvenle belirlenmesi için gerekir.", [], "Birim sınıflandırmasını, numune kalitesini, doygunluk ve drenaj koşullarını, gerilme geçmişini ve mevcut tüm gerilme–şekil değiştirme / hacim değişimi ham eğrilerini birlikte iletin.", ["Bu bir sayısal GTS NX parametresi değildir; açık model kararını tamamlamak için kullanılan GAIA veri teslim paketidir."]),
+    gtsPath: "GAIA iş akışı > Model karar veri talebi — GTS NX malzeme giriş alanı değildir",
+    sourceIds: ["gaia-workflow-spec"],
+  },
   parameter("unit-weight-unsat", "Fiziksel", "Doygun olmayan birim hacim ağırlık", "Unit Weight (Unsaturated)", "γunsat", "kN/m³", "ground-unit", "Doğal su koşulundaki zemin ağırlığının hacme oranıdır.", "Kendinden ağırlık gerilmelerini belirler.", ["density", "index"], "Her numunenin ham kütle, hacim, su muhtevası ve derinlik kayıtlarını iletin."),
   parameter("unit-weight-sat", "Fiziksel", "Doygun birim hacim ağırlık", "Saturated Unit Weight", "γsat", "kN/m³", "ground-unit", "Tam doygun zemin birim hacim ağırlığıdır.", "Su seviyesi altındaki toplam ve efektif gerilmeler için gereklidir.", ["density", "particle-density"], "Yoğunluk, dane yoğunluğu, su muhtevası ve doygunluk hesabının ham girdilerini iletin."),
   parameter("void-ratio", "Fiziksel", "Başlangıç boşluk oranı", "Initial Void Ratio", "e0", "—", "ground-unit", "Boşluk hacminin katı hacmine oranıdır.", "Konsolidasyon ve kritik durum modellerinin başlangıç durumunu tanımlar.", ["density", "particle-density", "oedometer"], "Kuru yoğunluk, dane yoğunluğu ve ödometre başlangıç ölçülerini numune bazında iletin."),
@@ -321,11 +332,11 @@ export const models: ModelDefinition[] = [
 export const builtInKnowledge: KnowledgePackage = {
   manifest: {
     packageId: "gaia-built-in-review",
-    version: "2026.08.08-review.1",
+    version: "2026.08.11-review.2",
     schemaVersion: "1.0",
     createdAt: "2026-08-08T00:00:00.000Z",
     gtsManualSnapshot: "GTS NX online manual v360 English field names; analysis reference v310; user PDF set",
-    payloadSha256: "32e58687259b22902b82a353ab6d324b6b79f9a77794f4b838f4960d9cc87a94",
+    payloadSha256: "dda3bee723052398460b5185ae47749fe8b614128a222f81621330491a9a968f",
     signature: "",
     signatureAlgorithm: "Ed25519",
     reviewerKeyId: "",
