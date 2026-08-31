@@ -61,6 +61,38 @@ describe("tüm parametrelerde anlamsal tekilleştirme", () => {
     expect(peakPhi[0].modelIds).toContain("mohr-coulomb");
   });
 
+  it.each(parameters.map((parameter) => [parameter.id, parameter.group] as const))("%s için genel talebi tek açık mühendislik bağlamına yedirir", (parameterId, group) => {
+    const payload = payloadFor(parameterId, [
+      { parameterId, level: "required" },
+      { parameterId, level: "required", drainage: "drained", strengthState: "peak" },
+    ]);
+    const units = group === "Kaya" || group === "Anizotropi" ? [rockUnit] : [unitA];
+    const result = consolidateRequirements(project(["a-0", "a-1"], units), payload);
+    expect(result).toHaveLength(1);
+    expect(result[0].analysisIds).toEqual(["a-1", "a-0"]);
+    expect(result[0].drainage).toBe("drained");
+    expect(result[0].strengthState).toBe("peak");
+  });
+
+  it("genel talebi pik ve rezidüel gibi iki farklı anlama keyfî biçimde dağıtmaz", () => {
+    const payload = payloadFor("friction-angle-effective", [
+      { parameterId: "friction-angle-effective", level: "required" },
+      { parameterId: "friction-angle-effective", level: "required", drainage: "drained", strengthState: "peak" },
+      { parameterId: "friction-angle-effective", level: "conditional", drainage: "drained", strengthState: "residual" },
+    ]);
+    const result = consolidateRequirements(project(["a-0", "a-1", "a-2"], [unitA]), payload);
+    expect(result).toHaveLength(3);
+  });
+
+  it("kazık ve dayanım analizlerindeki efektif kohezyonu aynı birim için bir kez ister", () => {
+    const p = project(["nonlinear-static", "pile-soil", "strength-reduction"], [unitA]);
+    for (const analysisId of p.selectedAnalysisIds) p.confirmedModelIds[`${analysisId}:GU-A`] = ["mohr-coulomb"];
+    const cohesion = consolidateRequirements(p, builtInKnowledge.payload).filter((item) => item.parameter.id === "cohesion-effective");
+    expect(cohesion).toHaveLength(1);
+    expect(cohesion[0].analysisIds).toEqual(expect.arrayContaining(["nonlinear-static", "pile-soil", "strength-reduction"]));
+    expect(cohesion[0].modelIds).toContain("mohr-coulomb");
+  });
+
   it("aynı ödometre protokolünü bir kez listeler ve tüm çıktıları bağlar", () => {
     const payload = builtInKnowledge.payload;
     const p = project(["consolidation"]);
@@ -69,6 +101,20 @@ describe("tüm parametrelerde anlamsal tekilleştirme", () => {
     const oedometer = program.filter((item) => item.method.id === "oedometer");
     expect(oedometer).toHaveLength(1);
     expect(oedometer[0].parameterIds).toEqual(expect.arrayContaining(["compression-index", "swelling-index", "preconsolidation", "cv"]));
+  });
+
+  it("aynı deney protokolünü farklı mühendislik alt koşullarında iş emrinde tekrarlamaz", () => {
+    const payload = payloadFor("friction-angle-effective", [
+      { parameterId: "friction-angle-effective", level: "required", drainage: "drained", strengthState: "peak", stressPath: "compression" },
+      { parameterId: "friction-angle-effective", level: "required", drainage: "drained", strengthState: "critical", stressPath: "compression" },
+      { parameterId: "friction-angle-effective", level: "conditional", drainage: "drained", strengthState: "peak", stressPath: "extension" },
+    ]);
+    const p = project(["a-0", "a-1", "a-2"], [unitA]);
+    const program = consolidateTests(consolidateRequirements(p, payload), payload, p);
+    const cd = program.filter((item) => item.method.id === "triaxial-cd");
+    expect(cd).toHaveLength(1);
+    expect(cd[0].requirementIds).toHaveLength(3);
+    expect(cd[0].applicability).toHaveLength(3);
   });
 
   it("bilinmeyen katalog referansını sessizce atmaz", () => {

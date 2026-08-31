@@ -1,6 +1,6 @@
 {
   "name": "gaia-gts-nx-assistant",
-  "version": "0.1.0-review.1",
+  "version": "0.1.0-review.4",
   "private": true,
   "author": "Hamit Parlak",
   "license": "MIT",
@@ -22,7 +22,8 @@
     "test:e2e": "npm run build && playwright test",
     "test:exports": "npm run build && cross-env GAIA_SAMPLE_EXPORT_DIR=artifacts/verification electron . && node scripts/verify-exports.mjs artifacts/verification",
     "verify": "npm run test && npm run build && npm run test:e2e",
-    "dist:win": "npm run verify && electron-builder --win nsis portable --publish never"
+    "verify:full": "npm run verify && npm run test:exports",
+    "dist:win": "npm run verify:full && electron-builder --win nsis portable --publish never"
   },
   "dependencies": {
     "docx": "9.7.1",

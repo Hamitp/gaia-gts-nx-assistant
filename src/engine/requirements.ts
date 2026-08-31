@@ -58,6 +58,74 @@ function mergeContribution(
   if (levelPriority[incoming.level] > levelPriority[existing.level]) existing.level = incoming.level;
 }
 
+const semanticQualifierKeys = [
+  "drainage",
+  "strengthState",
+  "stressPath",
+  "direction",
+  "strainRange",
+  "specimenCondition",
+  "stiffnessBasis",
+  "strengthBasis",
+] as const;
+
+function sameUnitSet(left: RequirementContribution, right: RequirementContribution): boolean {
+  if (left.groundUnitIds.length !== right.groundUnitIds.length) return false;
+  const rightIds = new Set(right.groundUnitIds);
+  return left.groundUnitIds.every((id) => rightIds.has(id));
+}
+
+function isStrictlyMoreSpecific(candidate: RequirementContribution, broad: RequirementContribution): boolean {
+  let addsMeaning = false;
+  for (const key of semanticQualifierKeys) {
+    const broadValue = normalized(broad[key]);
+    const candidateValue = normalized(candidate[key]);
+    if (broadValue === "any") {
+      if (candidateValue !== "any") addsMeaning = true;
+      continue;
+    }
+    if (candidateValue !== broadValue) return false;
+  }
+  return addsMeaning;
+}
+
+/**
+ * A model can ask for a parameter without adding an engineering qualifier
+ * while one selected analysis already asks for the same parameter in one
+ * explicit context. In that unambiguous case the broad contribution is not a
+ * second value request: its provenance is attached to the specific row.
+ *
+ * If two distinct contexts exist (for example peak and residual), the broad
+ * request is deliberately retained rather than being assigned to the wrong
+ * engineering meaning.
+ */
+function collapseUniquelySubsumedRequirements(map: Map<string, RequirementContribution>): void {
+  let changed = true;
+  while (changed) {
+    changed = false;
+    const contributions = [...map.values()];
+    for (const broad of contributions) {
+      if (!map.has(broad.canonicalKey)) continue;
+      const candidates = contributions.filter((candidate) =>
+        candidate.canonicalKey !== broad.canonicalKey
+        && map.has(candidate.canonicalKey)
+        && candidate.parameter.id === broad.parameter.id
+        && sameUnitSet(candidate, broad)
+        && isStrictlyMoreSpecific(candidate, broad));
+      if (candidates.length !== 1) continue;
+
+      const target = candidates[0];
+      target.analysisIds = unique([...target.analysisIds, ...broad.analysisIds]);
+      target.modelIds = unique([...target.modelIds, ...broad.modelIds]);
+      target.notes = unique([...target.notes, ...broad.notes]);
+      if (levelPriority[broad.level] > levelPriority[target.level]) target.level = broad.level;
+      map.delete(broad.canonicalKey);
+      changed = true;
+      break;
+    }
+  }
+}
+
 function addTemplate(
   map: Map<string, RequirementContribution>,
   payload: KnowledgePayload,
@@ -225,6 +293,8 @@ export function consolidateRequirements(project: GaiaProject, payload: Knowledge
     }
   }
 
+  collapseUniquelySubsumedRequirements(map);
+
   return [...map.values()]
     .sort((a, b) => {
       const priority = levelPriority[b.level] - levelPriority[a.level];
@@ -266,7 +336,10 @@ export function consolidateTests(
       const method = payload.tests.find((item) => item.id === testId);
       if (!method) throw new Error(`Bilgi paketi bozuk: ${requirement.parameter.id} için ${testId} deney kimliği bulunamadı.`);
       const condition = testSpecimenCondition(requirement.specimenCondition);
-      const key = [testId, specimenClass(requirement), unitGroup.materialClass, condition, requirement.drainage, requirement.stiffnessBasis, requirement.strengthBasis, requirement.strengthState, requirement.stressPath, requirement.direction, requirement.strainRange].join("|");
+      // One physical protocol is requested once. Engineering qualifiers remain
+      // traceable on each linked requirement/applicability item instead of
+      // duplicating the laboratory or field work-order row.
+      const key = [testId, specimenClass(requirement), condition].join("|");
       const existing = map.get(key);
       if (existing) {
         existing.parameterIds = unique([...existing.parameterIds, requirement.parameter.id]);

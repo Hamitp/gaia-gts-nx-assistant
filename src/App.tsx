@@ -46,6 +46,7 @@ import type {
 } from "./domain/types";
 import { buildCanonicalResult } from "./engine/result";
 import { recommendModels } from "./engine/recommend";
+import { analysisChoiceCopy, analysisPurposes, modelDecisionCopy, plainLevelCopy } from "./presentation";
 
 const steps = [
   { label: "Proje", hint: "Temel bilgiler", icon: FileText },
@@ -56,15 +57,19 @@ const steps = [
   { label: "Talep", hint: "Tekrarsız sonuç", icon: ClipboardCheck },
 ];
 
-const analysisIcons: Record<string, typeof Gauge> = {
-  Statik: Mountain,
-  Stabilite: Mountain,
-  Sızma: Droplets,
-  "Bağlı analiz": Waves,
-  Konsolidasyon: Layers3,
-  Dinamik: Waves,
-  "Modelleme kapsamı": ShieldCheck,
+const purposeIcons: Record<string, typeof Gauge> = {
+  deformation: Gauge,
+  construction: Layers3,
+  stability: Mountain,
+  seepage: Droplets,
+  coupled: Waves,
+  consolidation: Layers3,
+  dynamic: Waves,
+  interaction: ShieldCheck,
 };
+
+const linkedConditionAnalyses = { constructionStages: "construction-stage", interfacePresent: "interface", pilePresent: "pile-soil" } as const;
+const dynamicAnalysisIds = new Set(analyses.filter((analysis) => analysis.group === "Dinamik").map((analysis) => analysis.id));
 
 const soilOptions: { value: SoilType; label: string; hint: string }[] = [
   { value: "unknown", label: "Henüz bilinmiyor", hint: "Karar için veri eksik olarak işaretlenir" },
@@ -287,37 +292,71 @@ function ProjectStep({ project, update }: { project: GaiaProject; update: (patch
 }
 
 function AnalysesStep({ project, update }: { project: GaiaProject; update: (patch: Partial<GaiaProject>) => void }) {
-  const [query, setQuery] = useState("");
-  const groups = [...new Set(analyses.map((analysis) => analysis.group))];
-  const toggle = (id: string) => update({ selectedAnalysisIds: project.selectedAnalysisIds.includes(id) ? project.selectedAnalysisIds.filter((item) => item !== id) : [...project.selectedAnalysisIds, id] });
+  const selectedPurpose = analysisPurposes.find((purpose) => purpose.analysisIds.some((id) => project.selectedAnalysisIds.includes(id)));
+  const [openPurpose, setOpenPurpose] = useState(selectedPurpose?.id ?? analysisPurposes[0].id);
+  const toggle = (id: string) => {
+    const selectedAnalysisIds = project.selectedAnalysisIds.includes(id) ? project.selectedAnalysisIds.filter((item) => item !== id) : [...project.selectedAnalysisIds, id];
+    const validContexts = new Set(selectedAnalysisIds.flatMap((analysisId) => project.groundUnits.map((unit) => `${analysisId}:${unit.id}`)));
+    update({
+      selectedAnalysisIds,
+      conditions: {
+        ...project.conditions,
+        constructionStages: selectedAnalysisIds.includes(linkedConditionAnalyses.constructionStages),
+        interfacePresent: selectedAnalysisIds.includes(linkedConditionAnalyses.interfacePresent),
+        pilePresent: selectedAnalysisIds.includes(linkedConditionAnalyses.pilePresent),
+        dynamicLoading: selectedAnalysisIds.some((analysisId) => dynamicAnalysisIds.has(analysisId)),
+      },
+      confirmedModelIds: Object.fromEntries(Object.entries(project.confirmedModelIds).filter(([key]) => validContexts.has(key))),
+      deferredModelContexts: project.deferredModelContexts.filter((key) => validContexts.has(key)),
+    });
+  };
   return (
     <div className="step-content">
-      <SectionIntro eyebrow="02 · Analiz kapsamı" title="Hangi analizleri yapacaksınız?" text="Aynı projede istediğiniz kadar analiz seçin. Ortak veri ihtiyaçları sonuçta otomatik olarak tekilleştirilir." aside={<div className="selection-count"><strong>{project.selectedAnalysisIds.length}</strong><span>analiz seçildi</span></div>} />
-      <div className="search-box"><Search size={18} /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Analiz ara: konsolidasyon, dinamik, kazık…" aria-label="Analiz ara" />{query && <button onClick={() => setQuery("")} aria-label="Aramayı temizle"><X size={16} /></button>}</div>
-      <div className="analysis-groups">
-        {groups.map((group) => {
-          const visible = analyses.filter((analysis) => analysis.group === group && `${analysis.nameTr} ${analysis.officialName} ${analysis.summary}`.toLocaleLowerCase("tr").includes(query.toLocaleLowerCase("tr")));
-          if (!visible.length) return null;
-          const Icon = analysisIcons[group] ?? Gauge;
-          return <section key={group} className="analysis-group"><h3><Icon size={18} /> {group}<span>{visible.length}</span></h3><div className="analysis-grid">
-            {visible.map((analysis) => {
-              const checked = project.selectedAnalysisIds.includes(analysis.id);
-              return <button key={analysis.id} className={`analysis-card ${checked ? "selected" : ""}`} onClick={() => toggle(analysis.id)} aria-pressed={checked}>
-                <span className="check-box">{checked && <Check size={15} />}</span>
-                <div><strong>{analysis.nameTr}</strong><small>{analysis.officialName}</small><p>{analysis.summary}</p><em>{analysis.example}</em></div>
-              </button>;
-            })}
-          </div></section>;
+      <SectionIntro eyebrow="02 · Hesap amaçları" title="Önce neyi öğrenmek istediğinizi seçin" text="Birden fazla amacı ve hesap türünü birlikte seçebilirsiniz. GAIA ortak parametreleri ve deneyleri geoteknik talebinde yalnız bir kez gösterecek." aside={<div className="selection-count"><strong>{project.selectedAnalysisIds.length}</strong><span>hesap türü seçildi</span></div>} />
+      {project.selectedAnalysisIds.length > 0 && <div className="selected-analysis-strip" aria-label="Seçilen hesap türleri"><strong>Seçiminiz</strong><div>{project.selectedAnalysisIds.map((id) => <button key={id} onClick={() => toggle(id)} title="Seçimi kaldır">{analysisChoiceCopy[id]?.title ?? analyses.find((item) => item.id === id)?.nameTr ?? id}<X size={14} /></button>)}</div></div>}
+      <div className="purpose-list">
+        {analysisPurposes.map((purpose) => {
+          const Icon = purposeIcons[purpose.id] ?? Gauge;
+          const purposeAnalyses = purpose.analysisIds.map((id) => analyses.find((analysis) => analysis.id === id)).filter((item) => Boolean(item));
+          const selectedCount = purpose.analysisIds.filter((id) => project.selectedAnalysisIds.includes(id)).length;
+          const isOpen = openPurpose === purpose.id;
+          return <section key={purpose.id} className={`purpose-card ${isOpen ? "open" : ""} ${selectedCount ? "has-selection" : ""}`}>
+            <button className="purpose-summary" onClick={() => setOpenPurpose(isOpen ? "" : purpose.id)} aria-expanded={isOpen} aria-controls={`purpose-${purpose.id}`}>
+              <span className="purpose-icon"><Icon size={21} /></span>
+              <span className="purpose-copy"><small>{purpose.extraScope ? "EK MODELLEME KAPSAMI" : "NE KONTROL EDİLECEK?"}</small><strong>{purpose.title}</strong><b>{purpose.question}</b><em>{purpose.explanation}</em></span>
+              {selectedCount > 0 && <span className="purpose-selected"><Check size={14} /> {selectedCount} seçildi</span>}
+              <ChevronRight size={19} className="purpose-chevron" />
+            </button>
+            {isOpen && <div className="purpose-options" id={`purpose-${purpose.id}`}>
+              <div className="purpose-guidance"><Info size={17} /><span><strong>{purpose.extraScope ? "Bu kapsamı ne zaman eklemelisiniz?" : "Aşağıdan size uyan çözüm yolunu seçin."}</strong><small>Örnek kullanım: {purpose.example}</small></span></div>
+              <div className="analysis-choice-list">
+                {purposeAnalyses.map((analysis) => {
+                  const item = analysis!;
+                  const checked = project.selectedAnalysisIds.includes(item.id);
+                  const copy = analysisChoiceCopy[item.id] ?? { title: item.nameTr, chooseWhen: item.summary, outcome: item.example };
+                  return <button key={item.id} className={`analysis-choice ${checked ? "selected" : ""}`} onClick={() => toggle(item.id)} aria-pressed={checked}>
+                    <span className="check-box">{checked && <Check size={15} />}</span>
+                    <span><strong>{copy.title}</strong><b>Şunu seçin: {copy.chooseWhen}</b><p>{copy.outcome}</p><details onClick={(event) => event.stopPropagation()}><summary>GTS NX teknik adını göster</summary><small>{item.nameTr} · {item.officialName}</small></details></span>
+                  </button>;
+                })}
+              </div>
+            </div>}
+          </section>;
         })}
       </div>
-      {!project.selectedAnalysisIds.length && <div className="empty-inline"><CircleHelp size={20} /><span>Devam etmek için en az bir analiz seçin.</span></div>}
+      {!project.selectedAnalysisIds.length && <div className="empty-inline"><CircleHelp size={20} /><span>Devam etmek için en az bir amaç kartını açın ve size uygun hesap türünü seçin.</span></div>}
     </div>
   );
 }
 
 function UnitsStep({ project, update }: { project: GaiaProject; update: (patch: Partial<GaiaProject>) => void }) {
   const updateUnit = (id: string, patch: Partial<GroundUnit>) => update({ groundUnits: project.groundUnits.map((unit) => unit.id === id ? { ...unit, ...patch } : unit) });
-  const remove = (id: string) => project.groundUnits.length > 1 && update({ groundUnits: project.groundUnits.filter((unit) => unit.id !== id) });
+  const remove = (id: string) => {
+    if (project.groundUnits.length <= 1) return;
+    const groundUnits = project.groundUnits.filter((unit) => unit.id !== id);
+    const validContexts = new Set(project.selectedAnalysisIds.flatMap((analysisId) => groundUnits.map((unit) => `${analysisId}:${unit.id}`)));
+    update({ groundUnits, confirmedModelIds: Object.fromEntries(Object.entries(project.confirmedModelIds).filter(([key]) => validContexts.has(key))), deferredModelContexts: project.deferredModelContexts.filter((key) => validContexts.has(key)) });
+  };
   return (
     <div className="step-content">
       <SectionIntro eyebrow="03 · Zemin modeli" title="Jeoteknik birimleri ayırın" text="Farklı mühendislik davranışı gösteren her tabakayı ayrı birim olarak tanımlayın. Aynı parametre birden fazla birimde istenirse talep cümlesi tek kalır; birimler altında listelenir." aside={<button className="button button-secondary" onClick={() => update({ groundUnits: [...project.groundUnits, emptyUnit(project.groundUnits.length + 1)] })}><Plus size={17} /> Birim ekle</button>} />
@@ -344,13 +383,22 @@ function ChoiceCard({ selected, title, text, onClick, icon }: { selected: boolea
   return <button className={`choice-card ${selected ? "selected" : ""}`} onClick={onClick} aria-pressed={selected}>{icon}<span><strong>{title}</strong><small>{text}</small></span><span className="radio-dot">{selected && <i />}</span></button>;
 }
 
-function ConditionsStep({ project, update }: { project: GaiaProject; update: (patch: Partial<GaiaProject>) => void }) {
+function ConditionsStep({ project, update, onOpenAnalyses }: { project: GaiaProject; update: (patch: Partial<GaiaProject>) => void; onOpenAnalyses: () => void }) {
   const setCondition = <K extends keyof GaiaProject["conditions"]>(key: K, value: GaiaProject["conditions"][K]) => {
-    const linked: Partial<Record<keyof GaiaProject["conditions"], string>> = { constructionStages: "construction-stage", interfacePresent: "interface", pilePresent: "pile-soil" };
-    const linkedAnalysis = linked[key];
-    const selectedAnalysisIds = value === true && linkedAnalysis && !project.selectedAnalysisIds.includes(linkedAnalysis) ? [...project.selectedAnalysisIds, linkedAnalysis] : project.selectedAnalysisIds;
-    update({ conditions: { ...project.conditions, [key]: value }, selectedAnalysisIds });
+    const linkedAnalysis = linkedConditionAnalyses[key as keyof typeof linkedConditionAnalyses];
+    let selectedAnalysisIds = [...project.selectedAnalysisIds];
+    if (value === true && linkedAnalysis && !selectedAnalysisIds.includes(linkedAnalysis)) selectedAnalysisIds.push(linkedAnalysis);
+    if (value === false && linkedAnalysis) selectedAnalysisIds = selectedAnalysisIds.filter((id) => id !== linkedAnalysis);
+    if (value === false && key === "dynamicLoading") selectedAnalysisIds = selectedAnalysisIds.filter((id) => !dynamicAnalysisIds.has(id));
+    const validContexts = new Set(selectedAnalysisIds.flatMap((analysisId) => project.groundUnits.map((unit) => `${analysisId}:${unit.id}`)));
+    update({
+      conditions: { ...project.conditions, [key]: value },
+      selectedAnalysisIds,
+      confirmedModelIds: Object.fromEntries(Object.entries(project.confirmedModelIds).filter(([context]) => validContexts.has(context))),
+      deferredModelContexts: project.deferredModelContexts.filter((context) => validContexts.has(context)),
+    });
   };
+  const dynamicAnalysisMissing = project.conditions.dynamicLoading && !project.selectedAnalysisIds.some((id) => dynamicAnalysisIds.has(id));
   return (
     <div className="step-content">
       <SectionIntro eyebrow="04 · Proje koşulları" title="Suyun ve yüklemenin dilini belirleyin" text="Bu seçimler aynı sembollü fakat farklı mühendislik anlamlı parametrelerin güvenli biçimde ayrılmasını sağlar." />
@@ -373,44 +421,88 @@ function ConditionsStep({ project, update }: { project: GaiaProject; update: (pa
           ["interfacePresent", "Zemin-yapı arayüzü", "Duvar, kaplama veya temel teması"],
           ["pilePresent", "Kazık sistemi", "Eksenel veya yanal kazık etkileşimi"],
         ].map(([key, title, text]) => <label className="toggle-card" key={key}><span><strong>{title}</strong><small>{text}</small></span><input type="checkbox" checked={Boolean(project.conditions[key as keyof GaiaProject["conditions"]])} onChange={(e) => setCondition(key as keyof GaiaProject["conditions"], e.target.checked as never)} /><i /></label>)}
-      </div></div>
+      </div>{dynamicAnalysisMissing && <div className="helper-strip gold"><AlertTriangle size={18} /><div><strong>Dinamik yük var; hesap türü henüz seçilmedi.</strong><span>Zaman tanım alanı, tepki spektrumu veya hareketli yük gibi uygun çözümü Analizler adımında seçin.</span></div><button className="button button-secondary" onClick={onOpenAnalyses}>Dinamik hesap türünü seç</button></div>}</div>
     </div>
   );
 }
 
 function ModelsStep({ project, update, knowledge }: { project: GaiaProject; update: (patch: Partial<GaiaProject>) => void; knowledge: KnowledgePackage }) {
   const recommendations = useMemo(() => recommendModels(project, knowledge.payload), [project, knowledge]);
-  const contexts = project.selectedAnalysisIds.flatMap((analysisId) => project.groundUnits.map((unit) => ({ analysisId, unit })));
-  const select = (context: string, modelId: string) => update({ confirmedModelIds: { ...project.confirmedModelIds, [context]: [modelId] }, deferredModelContexts: project.deferredModelContexts.filter((item) => item !== context) });
+  const contexts = project.groundUnits.flatMap((unit) => project.selectedAnalysisIds.map((analysisId) => ({ analysisId, unit, key: `${analysisId}:${unit.id}` })));
+  const unresolved = contexts.filter(({ key }) => !project.confirmedModelIds[key]?.length && !project.deferredModelContexts.includes(key));
+  const [openContext, setOpenContext] = useState(contexts[0]?.key ?? "");
+  useEffect(() => {
+    if (!contexts.some(({ key }) => key === openContext)) setOpenContext(unresolved[0]?.key ?? contexts[0]?.key ?? "");
+  }, [contexts, openContext, unresolved]);
+  const goToNext = (current: string) => {
+    const next = contexts.find(({ key }) => key !== current && !project.confirmedModelIds[key]?.length && !project.deferredModelContexts.includes(key));
+    setOpenContext(next?.key ?? current);
+  };
+  const select = (context: string, modelId: string) => {
+    update({ confirmedModelIds: { ...project.confirmedModelIds, [context]: [modelId] }, deferredModelContexts: project.deferredModelContexts.filter((item) => item !== context) });
+    goToNext(context);
+  };
   const defer = (context: string) => {
     const confirmedModelIds = { ...project.confirmedModelIds };
     delete confirmedModelIds[context];
     update({ confirmedModelIds, deferredModelContexts: [...new Set([...project.deferredModelContexts, context])] });
+    goToNext(context);
   };
+  const deferOpenForUnit = (unitId: string) => {
+    const unitContexts = unresolved.filter(({ unit }) => unit.id === unitId).map(({ key }) => key);
+    if (!unitContexts.length) return;
+    const confirmedModelIds = { ...project.confirmedModelIds };
+    unitContexts.forEach((context) => delete confirmedModelIds[context]);
+    update({ confirmedModelIds, deferredModelContexts: [...new Set([...project.deferredModelContexts, ...unitContexts])] });
+    const next = unresolved.find(({ key }) => !unitContexts.includes(key));
+    setOpenContext(next?.key ?? unitContexts[0]);
+  };
+  const completeCount = contexts.length - unresolved.length;
   return (
     <div className="step-content">
-      <SectionIntro eyebrow="05 · Malzeme modeli" title="Modeli siz seçin; GAIA gerekçeyi görünür kılsın" text="Öneriler analiz ve jeoteknik birim için ayrı hazırlanır. En yüksek puan otomatik karar değildir; nihai seçimi siz onaylarsınız." />
-      {!contexts.length ? <div className="empty-state"><Sparkles size={30} /><h3>Öneri için önce analiz seçin</h3><p>Analiz ve birim bilgileri tamamlandığında uygun modeller burada sıralanır.</p></div> : <div className="model-contexts">
-        {contexts.map(({ analysisId, unit }) => {
-          const contextKey = `${analysisId}:${unit.id}`;
-          const analysis = knowledge.payload.analyses.find((item) => item.id === analysisId);
-          const candidates = recommendations.filter((item) => item.analysisId === analysisId && item.unitId === unit.id);
-          const selected = project.confirmedModelIds[contextKey]?.[0];
-          const deferred = project.deferredModelContexts.includes(contextKey);
-          return <article className="model-context" key={contextKey}>
-            <header><div><span>{analysis?.nameTr}</span><h3>{unit.name}</h3><small>{soilOptions.find((item) => item.value === unit.soilType)?.label}</small></div>{selected ? <div className="context-status ok"><CheckCircle2 size={16} /> Model kullanıcı tarafından seçildi</div> : deferred ? <div className="context-status"><CircleHelp size={16} /> Karar için veri istenecek</div> : <div className="context-status"><AlertTriangle size={16} /> Seçim bekliyor</div>}</header>
-            <div className="model-cards">
-              {candidates.slice(0, 3).map((candidate, index) => {
-                const locked = candidate.model.catalogueStatus !== "verified-core";
-                return <button key={candidate.model.id} className={`model-card ${selected === candidate.model.id ? "selected" : ""} ${locked ? "locked" : ""}`} disabled={locked} onClick={() => select(contextKey, candidate.model.id)} aria-pressed={selected === candidate.model.id}>
-                <div className="model-rank">{locked ? <ShieldCheck size={14} /> : index + 1}</div><div className="model-main"><div className="model-title"><strong>{candidate.model.nameTr}</strong><span>{candidate.model.name}</span>{locked ? <em>Katalog doğrulaması bekleniyor</em> : candidate.model.expertOnly && <em>Uzman kalibrasyonu</em>}</div><p>{candidate.model.behaviour}</p><ul>{(locked ? candidate.model.unverifiedFields : candidate.reasons).slice(0, 2).map((reason) => <li key={reason}>{reason}</li>)}</ul><small>{locked ? "Bu model review build’de seçilemez" : `${candidate.model.parameterIds.length} veri girdisi talebe bağlanır`}</small></div><span className="radio-dot">{selected === candidate.model.id && <i />}</span>
-              </button>;
-              })}
-              <button className={`defer-model ${deferred ? "selected" : ""}`} onClick={() => defer(contextKey)} aria-pressed={deferred}><CircleHelp size={18} /><span><strong>Modeli şimdi seçmeyeceğim</strong><small>GAIA bir model varsaymayacak; karar verebilmek için gerekli temel verileri isteyecek.</small></span>{deferred && <CheckCircle2 size={18} />}</button>
-              {candidates.length > 3 && <details className="model-catalogue-details"><summary>Tüm model alternatiflerini incele <span>{candidates.length}</span></summary><div>{candidates.slice(3).map((candidate) => <article key={candidate.model.id}><div><strong>{candidate.model.nameTr}</strong><small>{candidate.model.name}</small></div><span className={`catalogue-state ${candidate.model.catalogueStatus}`}>{candidate.model.catalogueStatus === "verified-core" ? "Çekirdek doğrulandı" : candidate.model.catalogueStatus === "partial" ? "Kısmi — kilitli" : "Kilitli"}</span><p>{candidate.reasons[0]}</p></article>)}</div></details>}
-            </div>
-          </article>;
-        })}
+      <SectionIntro eyebrow="05 · Zemin davranışı" title="Her birim için modeli adım adım seçin" text="GAIA modeli sizin yerinize seçmez. Aynı anda yalnız bir karar açılır; doğrulanmamış modeller hesapta kullanılamaz, fakat karar için gerekli veriler talep edilebilir." aside={contexts.length ? <div className="model-progress" role="status" aria-live="polite"><strong>{completeCount} / {contexts.length}</strong><span>karar tamamlandı</span><i><b style={{ width: `${contexts.length ? (completeCount / contexts.length) * 100 : 0}%` }} /></i></div> : undefined} />
+      {!contexts.length ? <div className="empty-state"><Sparkles size={30} /><h3>Öneri için önce analiz seçin</h3><p>Analiz ve birim bilgileri tamamlandığında uygun modeller burada sıralanır.</p></div> : <div className="model-unit-list">
+        {project.groundUnits.map((unit) => { const openForUnit = unresolved.filter((context) => context.unit.id === unit.id).length; return <section className="model-unit-panel" key={unit.id}>
+          <header><div><small>JEOTEKNİK BİRİM</small><h3>{unit.name}</h3><span>{soilOptions.find((item) => item.value === unit.soilType)?.label}</span></div><div className="model-unit-actions"><b>{project.selectedAnalysisIds.length} hesap için karar</b>{openForUnit > 1 && <button className="button button-secondary" onClick={() => deferOpenForUnit(unit.id)}>Açık {openForUnit} karar için veriyi topluca iste</button>}</div></header>
+          <div className="model-decision-list">
+            {contexts.filter((item) => item.unit.id === unit.id).map(({ analysisId, key: contextKey }) => {
+              const analysis = knowledge.payload.analyses.find((item) => item.id === analysisId);
+              const candidates = recommendations.filter((item) => item.analysisId === analysisId && item.unitId === unit.id);
+              const selectable = candidates.filter((candidate) => candidate.model.catalogueStatus === "verified-core");
+              const lockedCandidates = candidates.filter((candidate) => candidate.model.catalogueStatus !== "verified-core");
+              const selectedId = project.confirmedModelIds[contextKey]?.[0];
+              const selectedModel = models.find((item) => item.id === selectedId);
+              const deferred = project.deferredModelContexts.includes(contextKey);
+              const isOpen = openContext === contextKey;
+              const unknownSoil = unit.soilType === "unknown";
+              return <article key={contextKey} className={`model-decision ${isOpen ? "open" : ""} ${selectedId || deferred ? "complete" : ""}`}>
+                <button className="model-decision-summary" onClick={() => setOpenContext(isOpen ? "" : contextKey)} aria-expanded={isOpen} aria-controls={`model-${contextKey}`} aria-label={`${unit.name}, ${analysis?.nameTr}, ${selectedId ? "model seçildi" : deferred ? "karar verisi talep edildi" : "seçim bekliyor"}`}>
+                  <span className={`decision-state ${selectedId || deferred ? "ok" : ""}`}>{selectedId || deferred ? <Check size={16} /> : <span />}</span>
+                  <span><small>HESAP</small><strong>{analysisChoiceCopy[analysisId]?.title ?? analysis?.nameTr}</strong><em>{analysisChoiceCopy[analysisId]?.outcome ?? analysis?.summary}</em></span>
+                  <b>{selectedModel ? selectedModel.nameTr : deferred ? "Model seçilmedi · veri istenecek" : unknownSoil ? "Önce zemin türü gerekli" : "Karar bekliyor"}</b>
+                  <ChevronRight size={18} />
+                </button>
+                {isOpen && <div className="model-decision-body" id={`model-${contextKey}`}>
+                  <div className="decision-question"><span>Bu hesapta <strong>{unit.name}</strong> davranışını nasıl temsil edeceksiniz?</span><small>Seçiminiz bu bağlam için istenecek parametreleri belirler.</small></div>
+                  {unknownSoil && <div className="model-data-route"><Info size={21} /><div><strong>Önce bu birimin zemin/kaya türünü tanımlayın</strong><p>Model önerisi için en azından dolgu, kum, kil veya kaya gibi temel sınıflandırma gerekir. Tahmin etmeyin; model seçmeden karar verisini talep edebilirsiniz.</p></div></div>}
+                  {selectable.length > 0 && <div className="simple-model-options">
+                    {selectable.map((candidate) => {
+                      const copy = modelDecisionCopy[candidate.model.id] ?? { summary: candidate.model.behaviour, chooseWhen: candidate.reasons[0] ?? "Uzman değerlendirmesi uygun buluyorsa", caution: candidate.model.warning ?? "Proje koşullarıyla doğrulanmalıdır." };
+                      const checked = selectedId === candidate.model.id;
+                      return <button key={candidate.model.id} className={`simple-model-card ${checked ? "selected" : ""}`} onClick={() => select(contextKey, candidate.model.id)} aria-pressed={checked}>
+                        <span className="radio-dot">{checked && <i />}</span><span><small>DOĞRULANMIŞ TEMEL SEÇENEK</small><strong>{candidate.model.nameTr}</strong><p>{copy.summary}</p><dl><div><dt>Şunu seçin</dt><dd>{copy.chooseWhen}</dd></div><div><dt>En önemli sınır</dt><dd>{copy.caution}</dd></div></dl><em>{candidate.model.parameterIds.length} veri girdisi talebe eklenir</em></span>
+                      </button>;
+                    })}
+                  </div>}
+                  <div className={`model-data-route ${deferred ? "selected" : ""}`}>
+                    {deferred ? <CheckCircle2 size={21} /> : <CircleHelp size={21} />}<div><strong>{deferred ? "Model seçilmedi; karar verileri talebe eklendi" : "Henüz güvenli model kararı veremiyorum"}</strong><p>GAIA bir model uydurmaz. Sınıflandırma, gerilme geçmişi ve davranış verileri geoteknik ekipten istenir; model daha sonra uzman tarafından seçilir.</p></div><button className={`button ${deferred ? "button-secondary" : "button-primary"}`} onClick={() => defer(contextKey)} aria-pressed={deferred}>{deferred ? <><Check size={17} /> Talebe eklendi</> : <>Karar için veri iste <ArrowRight size={17} /></>}</button>
+                  </div>
+                  {lockedCandidates.length > 0 && <details className="model-catalogue-details locked-model-details"><summary>Teknik ayrıntı: henüz seçilemeyen ileri modeller <span>{lockedCandidates.length}</span></summary><div>{lockedCandidates.map((candidate) => <article key={candidate.model.id}><div><strong>{candidate.model.nameTr}</strong><small>{candidate.model.name}</small></div><span className={`catalogue-state ${candidate.model.catalogueStatus}`}>Hesapta kilitli</span><p>{candidate.model.unverifiedFields[0] ?? candidate.reasons[0]}</p></article>)}</div></details>}
+                </div>}
+              </article>;
+            })}
+          </div>
+        </section>; })}
       </div>}
       <div className="helper-strip gold"><AlertTriangle size={18} /><div><strong>Öneri, otomatik mühendislik kararı değildir.</strong><span>Model uygunluğu; saha davranışı, gerilme yolu, veri kalitesi ve bağımsız uzman incelemesiyle doğrulanmalıdır.</span></div></div>
     </div>
@@ -455,9 +547,42 @@ function DetailDrawer({ requirement, onClose }: { requirement: ConsolidatedRequi
 
 const drainageTr: Record<string, string> = { any: "Genel", drained: "Drenajlı", "undrained-effective": "Drenajsız · efektif gerilme", "undrained-total": "Drenajsız · toplam gerilme" };
 const strengthTr: Record<string, string> = { any: "", peak: "Pik dayanım", critical: "Kritik durum", residual: "Rezidüel dayanım", "post-cyclic": "Çevrim sonrası" };
+const fieldTestIds = new Set(["survey-borehole", "spt", "cptu", "scptu", "dmt", "pressuremeter", "field-vane", "piezometer", "geophysics", "pile-load"]);
+const levelRank: Record<RequirementLevel, number> = { required: 4, "missing-decision": 3, conditional: 2, recommended: 1 };
 
-function ResultsStep({ result, project, onExport, onDetail }: { result: CanonicalResult; project: GaiaProject; onExport: () => void; onDetail: (req: ConsolidatedRequirement) => void }) {
-  const [view, setView] = useState<"parameters" | "tests" | "models" | "quality">("parameters");
+function testPriority(item: CanonicalResult["tests"][number]): RequirementLevel {
+  return item.applicability.reduce<RequirementLevel>((highest, use) => levelRank[use.level] > levelRank[highest] ? use.level : highest, "recommended");
+}
+
+function testGroupPriority(items: CanonicalResult["tests"]): RequirementLevel {
+  return items.reduce<RequirementLevel>((highest, item) => levelRank[testPriority(item)] > levelRank[highest] ? testPriority(item) : highest, "recommended");
+}
+
+const protocolScopeTr: Record<string, string> = { interface: "Arayüz numunesi", pile: "Kazık sistemi / elemanı", structure: "Yapısal eleman / ürün", project: "Proje geneli", "ground-unit": "Zemin / kaya numunesi" };
+
+function testProtocolLabel(result: CanonicalResult, test: CanonicalResult["tests"][number]): string {
+  const requirements = test.requirementIds.map((id) => result.requirements.find((item) => item.id === id)).filter((item): item is ConsolidatedRequirement => Boolean(item));
+  const scopes = [...new Set(requirements.map((item) => protocolScopeTr[item.parameter.scope] ?? protocolScopeTr["ground-unit"]))];
+  const drainage = [...new Set(requirements.map((item) => item.drainage).filter((item) => item !== "any"))].map((item) => drainageTr[item]);
+  const strength = [...new Set(requirements.map((item) => item.strengthState).filter((item) => item !== "any"))].map((item) => strengthTr[item]);
+  const directions = [...new Set(requirements.map((item) => item.direction).filter((item) => item !== "any"))].map((item) => item.toUpperCase());
+  const specimenConditions = [...new Set(requirements.map((item) => item.specimenCondition).filter((item) => item !== "any"))];
+  return [...scopes, ...drainage, ...strength, ...directions, ...specimenConditions].join(" · ") || "Standart deney protokolü";
+}
+
+function testProtocolApplicability(test: CanonicalResult["tests"][number], project: GaiaProject): string {
+  const byLevel = new Map<RequirementLevel, Set<string>>();
+  test.applicability.forEach((use) => {
+    const units = byLevel.get(use.level) ?? new Set<string>();
+    if (!use.groundUnitIds.length) units.add("");
+    else use.groundUnitIds.forEach((id) => units.add(id));
+    byLevel.set(use.level, units);
+  });
+  return [...byLevel.entries()].sort(([left], [right]) => levelRank[right] - levelRank[left]).map(([level, unitIds]) => `${plainLevelCopy[level]}: ${unitIds.has("") ? "Proje geneli" : [...unitIds].map((id) => project.groundUnits.find((unit) => unit.id === id)?.name ?? id).join(" · ")}`).join("; ");
+}
+
+function ResultsStep({ result, project, onDetail }: { result: CanonicalResult; project: GaiaProject; onDetail: (req: ConsolidatedRequirement) => void }) {
+  const [view, setView] = useState<"brief" | "parameters" | "tests" | "models" | "quality">("brief");
   const [filter, setFilter] = useState<RequirementLevel | "all">("all");
   const [query, setQuery] = useState("");
   const visible = result.requirements.filter((req) => (filter === "all" || req.level === filter) && `${req.parameter.nameTr} ${req.parameter.officialName} ${req.parameter.symbol}`.toLocaleLowerCase("tr").includes(query.toLocaleLowerCase("tr")));
@@ -468,20 +593,56 @@ function ResultsStep({ result, project, onExport, onDetail }: { result: Canonica
   const uniqueParameterCount = new Set(result.requirements.map((item) => item.parameter.id)).size;
   const rawUses = result.requirements.reduce((sum, item) => sum + Math.max(1, item.analysisIds.length), 0);
   const mergedCount = Math.max(0, rawUses - result.requirements.length);
+  const linkedRequirementIds = new Set(result.tests.flatMap((item) => item.requirementIds));
+  const openDecisions = result.requirements.filter((item) => item.level === "missing-decision");
+  const directRequests = result.requirements.filter((item) => item.level !== "missing-decision" && !linkedRequirementIds.has(item.id));
+  const groupRequirements = (items: ConsolidatedRequirement[]) => {
+    const grouped = new Map<string, ConsolidatedRequirement[]>();
+    items.forEach((item) => grouped.set(item.parameter.id, [...(grouped.get(item.parameter.id) ?? []), item]));
+    return [...grouped.values()];
+  };
+  const openDecisionGroups = groupRequirements(openDecisions);
+  const directRequestGroups = groupRequirements(directRequests);
+  const testsByMethod = new Map<string, CanonicalResult["tests"]>();
+  result.tests.forEach((item) => testsByMethod.set(item.method.id, [...(testsByMethod.get(item.method.id) ?? []), item]));
+  const testGroups = [...testsByMethod.values()];
+  const fieldTests = testGroups.filter((items) => fieldTestIds.has(items[0].method.id));
+  const laboratoryTests = testGroups.filter((items) => !fieldTestIds.has(items[0].method.id));
+  const testUnits = (items: CanonicalResult["tests"]) => [...new Set(items.flatMap((item) => item.groundUnitIds))].map((id) => project.groundUnits.find((unit) => unit.id === id)?.name ?? id).join(" · ") || "Proje geneli";
   return (
     <div className="step-content result-step">
-      <SectionIntro eyebrow="06 · Birleştirilmiş talep" title="Tek proje. Tekrarsız, izlenebilir veri paketi." text={`${rawUses} analiz kullanımından ${result.requirements.length} mühendislik koşulu oluşturuldu; ${mergedCount} tekrar güvenli biçimde birleştirildi.`} aside={<button className="button button-primary" onClick={onExport}><Download size={18} /> {result.engineeringUseAllowed ? "Talep paketini oluştur" : "İnceleme taslağını oluştur"}</button>} />
+      <SectionIntro eyebrow="06 · Uzman inceleme taslağı" title={result.engineeringUseAllowed ? "Geoteknik ekip için onaylı iş listesi" : "Uzman incelemesi için tekrarsız taslak iş listesi"} text={`${rawUses} analiz kullanımındaki ortak ihtiyaçlar birleştirildi; ${mergedCount} tekrar kaldırıldı. Aynı deney yöntemi bir kez gösterilir; farklı numune ve protokol uygulamaları kendi öncelik ve birimleriyle ayrı tutulur.`} />
       {result.warnings.length > 0 && <div className="warning-panel"><AlertTriangle size={20} /><div><strong>Dışa aktarmadan önce dikkat</strong>{result.warnings.map((warning) => <p key={warning}>{warning}</p>)}</div></div>}
       <div className="metric-grid">
         <div className="metric-card"><span className="metric-icon mint"><ClipboardCheck size={20} /></span><div><strong>{uniqueParameterCount} / {result.requirements.length}</strong><small>parametre / mühendislik koşulu</small></div></div>
-        <div className="metric-card"><span className="metric-icon blue"><FlaskConical size={20} /></span><div><strong>{result.tests.length}</strong><small>birleştirilmiş deney satırı</small></div></div>
+        <div className="metric-card"><span className="metric-icon blue"><FlaskConical size={20} /></span><div><strong>{testGroups.length} / {result.tests.length}</strong><small>yöntem / uygulama ayrımı</small></div></div>
         <div className="metric-card"><span className="metric-icon gold"><Layers3 size={20} /></span><div><strong>{project.groundUnits.length}</strong><small>jeoteknik birim</small></div></div>
         <div className="metric-card"><span className="metric-icon slate"><FileArchive size={20} /></span><div><strong>3</strong><small>eş içerikli çıktı biçimi</small></div></div>
       </div>
       <div className="result-view-tabs" role="tablist" aria-label="Sonuç bölümleri">
-        {[{ id: "parameters", label: "Parametre talepleri", count: result.requirements.length }, { id: "tests", label: "Deney programı", count: result.tests.length }, { id: "models", label: "Model kararları", count: Object.keys(project.confirmedModelIds).length + project.deferredModelContexts.length }, { id: "quality", label: "Kalite ve kaynaklar", count: result.warnings.length }].map((tab) => <button key={tab.id} role="tab" aria-selected={view === tab.id} className={view === tab.id ? "active" : ""} onClick={() => setView(tab.id as typeof view)}>{tab.label}<span>{tab.count}</span></button>)}
+        {[{ id: "brief", label: "Gönderilecek işler", count: testGroups.length + directRequestGroups.length + openDecisionGroups.length }, { id: "parameters", label: "Mühendislik matrisi", count: uniqueParameterCount }, { id: "tests", label: "Deney matrisi", count: testGroups.length }, { id: "models", label: "Model kararları", count: Object.keys(project.confirmedModelIds).length + project.deferredModelContexts.length }, { id: "quality", label: "Kalite ve kaynaklar", count: result.warnings.length }].map((tab) => <button key={tab.id} id={`tab-${tab.id}`} role="tab" aria-controls={`panel-${tab.id}`} aria-selected={view === tab.id} className={view === tab.id ? "active" : ""} onClick={() => setView(tab.id as typeof view)}>{tab.label}<span>{tab.count}</span></button>)}
       </div>
-      {view === "parameters" && <>
+      {view === "brief" && <div id="panel-brief" role="tabpanel" aria-labelledby="tab-brief" className="handoff-view" data-testid="geotechnical-work-order">
+        <div className="handoff-intro"><ClipboardCheck size={24} /><div><span>{result.engineeringUseAllowed ? "GEOTEKNİK EKİP İÇİN ONAYLI ÖZET" : "UZMAN İNCELEMESİ İÇİN TASLAK"}</span><h3>Bu sırayla ilerleyin</h3><p>{result.engineeringUseAllowed ? "Geoteknik ekip" : "İnceleyen geoteknik uzman"}; aşağıdaki hedef birimleri ve tasarım etki derinliğini dikkate alarak adet/derinlik programını değerlendirmeli, ham kayıtların yorumlanmış raporla birlikte teslim kapsamını doğrulamalıdır.</p></div></div>
+        <div className="handoff-steps" aria-label="İş sırası"><div><span>1</span><strong>Açık kararları kapatın</strong><small>{openDecisionGroups.length ? `${openDecisionGroups.length} karar/ölçüm eksik` : "Açık karar yok"}</small></div><div><span>2</span><strong>Saha ve laboratuvarı planlayın</strong><small>{testGroups.length} yöntem · {result.tests.length} uygulama/protokol ayrımı</small></div><div><span>3</span><strong>Ham veriyi teslim edin</strong><small>Özet sonuçla birlikte denetlenebilir kayıt</small></div></div>
+        {openDecisionGroups.length > 0 && <section className="work-section decision-work"><header><AlertTriangle size={19} /><div><span>ÖNCE NETLEŞTİRİN</span><h3>İşe başlamadan önce gereken karar ve ölçümler</h3></div><b>{openDecisionGroups.length}</b></header><div className="direct-request-list">{openDecisionGroups.map((items) => { const req = items[0]; return <article key={req.parameter.id}><span className={`status-badge ${levelCopy[req.level].className}`}>{plainLevelCopy[req.level]}</span><div><strong>{req.parameter.nameTr}</strong><p>{req.parameter.why}</p><small><b>İstenen kanıt / teslim:</b> {req.parameter.rawRequest}</small></div><button className="detail-button" onClick={() => onDetail(req)}>Açıkla <ChevronRight size={15} /></button></article>; })}</div></section>}
+        {[{ id: "field", title: "Saha çalışmaları", icon: Mountain, items: fieldTests }, { id: "lab", title: "Laboratuvar deneyleri", icon: FlaskConical, items: laboratoryTests }].map((group) => {
+          const Icon = group.icon;
+          return group.items.length > 0 && <section className="work-section" key={group.id}><header><Icon size={19} /><div><span>YAPILACAK İŞLER</span><h3>{group.title}</h3></div><b>{group.items.length}</b></header><div className="work-order-list">{group.items.map((items) => {
+            const item = items[0];
+            const priority = testGroupPriority(items);
+            const parameterIds = [...new Set(items.flatMap((candidate) => candidate.parameterIds))];
+            const analysisIds = [...new Set(items.flatMap((candidate) => candidate.analysisIds))];
+            return <article className="work-order-card" key={item.method.id} data-test-method={item.method.id}>
+              <div className="work-order-title"><span className={`status-badge ${items.length > 1 ? "badge-conditional" : levelCopy[priority].className}`}>{items.length > 1 ? "Ayrı uygulamalar" : plainLevelCopy[priority]}</span><div><strong>{item.method.nameTr}</strong><small>{item.method.standardPrimary}</small></div></div>
+              <dl><div><dt>Toplam kapsam</dt><dd>{testUnits(items)}</dd></div><div><dt>Hangi çıktılar alınacak?</dt><dd>{parameterIds.map((id) => parameters.find((parameter) => parameter.id === id)?.nameTr ?? id).join(" · ")}</dd></div>{items.length > 1 && <div><dt>Ayrı uygulanacak numune/protokoller</dt><dd>{items.map((candidate) => <span key={candidate.id}><b>{testProtocolLabel(result, candidate)}</b><small>{testProtocolApplicability(candidate, project)}</small></span>)}</dd></div>}<div><dt>Hangi ham kayıtlar teslim edilecek?</dt><dd>{item.method.rawDeliverables.join(" · ")}</dd></div></dl>
+              <details><summary>Teknik ayrıntı: kullanıldığı hesaplar</summary><p>{analysisIds.map((id) => analyses.find((analysis) => analysis.id === id)?.nameTr ?? id).join(" · ")}</p></details>
+            </article>;
+          })}</div></section>;
+        })}
+        {directRequestGroups.length > 0 && <section className="work-section"><header><FileText size={19} /><div><span>DENEY DIŞI TESLİMLER</span><h3>Doğrudan istenecek proje ve saha verileri</h3></div><b>{directRequestGroups.length}</b></header><div className="direct-request-list">{directRequestGroups.map((items) => { const req = items[0]; return <article key={req.parameter.id}><span className={`status-badge ${levelCopy[req.level].className}`}>{plainLevelCopy[req.level]}</span><div><strong>{req.parameter.nameTr}</strong><p>{req.parameter.why}</p><small><b>İstenecek teslim:</b> {req.parameter.rawRequest}</small></div><button className="detail-button" onClick={() => onDetail(req)}>Açıkla <ChevronRight size={15} /></button></article>; })}</div></section>}
+      </div>}
+      {view === "parameters" && <div id="panel-parameters" role="tabpanel" aria-labelledby="tab-parameters">
         <div className="result-toolbar"><div className="filter-tabs"><button className={filter === "all" ? "active" : ""} onClick={() => setFilter("all")}>Tümü <span>{result.requirements.length}</span></button>{(["required", "conditional", "recommended", "missing-decision"] as RequirementLevel[]).map((level) => <button key={level} className={filter === level ? "active" : ""} onClick={() => setFilter(level)}>{levelCopy[level].label} <span>{count(level)}</span></button>)}</div><div className="result-search"><Search size={16} /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Parametre ara" /></div></div>
         <div className="result-table-wrap"><table className="result-table"><thead><tr><th>Durum / Parametre</th><th>Mühendislik alt koşulları</th><th>Kullanıldığı analizler</th><th>Uygulanacak birimler</th><th>Birincil belirleme yolu</th><th /></tr></thead><tbody>
           {concepts.map((variants) => {
@@ -492,16 +653,16 @@ function ResultsStep({ result, project, onExport, onDetail }: { result: Canonica
             return <tr key={first.parameter.id}><td data-label="Durum / Parametre"><div className="status-stack">{[...new Set(variants.map((item) => item.level))].map((level) => <span key={level} className={`status-badge ${levelCopy[level].className}`}>{levelCopy[level].label}</span>)}</div><strong>{first.parameter.nameTr}</strong><small>{first.parameter.officialName} · {first.parameter.symbol} [{first.parameter.unit}]</small></td><td data-label="Mühendislik alt koşulları"><div className="variant-list">{variants.map((item) => <span key={item.id}><b>{drainageTr[item.drainage]}</b>{strengthTr[item.strengthState] && <> · {strengthTr[item.strengthState]}</>}{item.direction !== "any" && <> · {item.direction.toUpperCase()}</>}{item.specimenCondition !== "any" && <small>{item.specimenCondition}</small>}</span>)}</div></td><td data-label="Kullanıldığı analizler"><div className="tag-list">{analysisIds.map((id) => <span key={id}>{analyses.find((a) => a.id === id)?.nameTr ?? id}</span>)}</div></td><td data-label="Uygulanacak birimler">{unitIds.length ? <div className="tag-list unit-tags">{unitIds.map((id) => <span key={id}>{project.groundUnits.find((u) => u.id === id)?.name ?? id}</span>)}</div> : <span className="project-scope">Proje geneli</span>}</td><td data-label="Birincil belirleme yolu"><span className="method-cell">{[...new Set(testRequests.map((item) => item.method.nameTr))].join(" · ") || "Uzman yöntem kararı gerekli"}</span></td><td data-label="Ayrıntı"><button className="detail-button" onClick={() => onDetail(first)}>Açıkla <ChevronRight size={15} /></button></td></tr>;
           })}
         </tbody></table>{!visible.length && <div className="empty-table">Aramanızla eşleşen parametre bulunamadı.</div>}</div>
-      </>}
-      {view === "tests" && <div className="result-table-wrap"><table className="result-table test-program-table"><thead><tr><th>Deney / standart</th><th>Sağlayacağı parametreler</th><th>Analizler ve durum–birim eşlemesi</th><th>İstenecek ham teslimler</th></tr></thead><tbody>{result.tests.map((item) => <tr key={item.id}>
+      </div>}
+      {view === "tests" && <div id="panel-tests" role="tabpanel" aria-labelledby="tab-tests" className="result-table-wrap"><table className="result-table test-program-table"><thead><tr><th>Deney / standart</th><th>Sağlayacağı parametreler</th><th>Analizler, uygulama/protokol ve birimler</th><th>İstenecek ham teslimler</th></tr></thead><tbody>{testGroups.map((items) => { const item = items[0]; const parameterIds = [...new Set(items.flatMap((candidate) => candidate.parameterIds))]; const analysisIds = [...new Set(items.flatMap((candidate) => candidate.analysisIds))]; return <tr key={item.method.id}>
         <td data-label="Deney / standart"><strong>{item.method.nameTr}</strong><small>{item.method.nameEn}<br />{item.method.standardPrimary}</small></td>
-        <td data-label="Sağlayacağı parametreler"><div className="tag-list">{item.parameterIds.map((id) => <span key={id}>{parameters.find((p) => p.id === id)?.nameTr ?? id}</span>)}</div></td>
-        <td data-label="Analizler ve durum–birim eşlemesi"><p>{item.analysisIds.map((id) => analyses.find((a) => a.id === id)?.nameTr ?? id).join(" · ")}</p><div className="variant-list">{item.applicability.map((use) => <span key={`${use.requirementId}:${use.level}`}><b>{levelCopy[use.level].label}</b><small>{use.groundUnitIds.map((id) => project.groundUnits.find((u) => u.id === id)?.name ?? id).join(" · ") || "Proje geneli"}</small></span>)}</div></td>
+        <td data-label="Sağlayacağı parametreler"><div className="tag-list">{parameterIds.map((id) => <span key={id}>{parameters.find((p) => p.id === id)?.nameTr ?? id}</span>)}</div></td>
+        <td data-label="Analizler, uygulama/protokol ve birimler"><p>{analysisIds.map((id) => analyses.find((a) => a.id === id)?.nameTr ?? id).join(" · ")}</p><div className="variant-list">{items.map((candidate) => <span key={candidate.id}><b>{testProtocolLabel(result, candidate)}</b><small>{testProtocolApplicability(candidate, project)}</small></span>)}</div></td>
         <td data-label="İstenecek ham teslimler"><ul className="raw-list">{item.method.rawDeliverables.map((raw) => <li key={raw}>{raw}</li>)}</ul></td>
-      </tr>)}</tbody></table></div>}
-      {view === "models" && <div className="decision-grid">{project.selectedAnalysisIds.flatMap((analysisId) => project.groundUnits.map((unit) => { const key = `${analysisId}:${unit.id}`; const modelId = project.confirmedModelIds[key]?.[0]; const model = models.find((item) => item.id === modelId); return <article key={key}><span>{analyses.find((item) => item.id === analysisId)?.nameTr}</span><h3>{unit.name}</h3>{model ? <p><CheckCircle2 size={16} /> Kullanıcı seçimi: <strong>{model.nameTr}</strong></p> : <p className="deferred"><CircleHelp size={16} /> Model kararı ertelendi; veri istenecek.</p>}</article>; }))}</div>}
-      {view === "quality" && <div className="quality-grid"><section><h3>Kritik uyarılar</h3>{result.warnings.map((warning) => <p key={warning}><AlertTriangle size={15} />{warning}</p>)}</section><section><h3>Kaynak izi</h3>{result.sources.map((source) => <p key={source.id}><BookOpen size={15} /><span><strong>{source.title}</strong><small>{source.locator} · doğrulama {source.verifiedAt}</small></span></p>)}</section></div>}
-      <div className="parity-note"><ShieldCheck size={18} /><div><strong>Tek kaynak, üç çıktı</strong><p>DOCX, PDF ve XLSX aynı {result.requirements.length} parametre ile {result.tests.length} deney kimliğinden üretilir. İçerik farkı oluşmasına izin verilmez.</p></div></div>
+      </tr>; })}</tbody></table></div>}
+      {view === "models" && <div id="panel-models" role="tabpanel" aria-labelledby="tab-models" className="decision-grid">{project.selectedAnalysisIds.flatMap((analysisId) => project.groundUnits.map((unit) => { const key = `${analysisId}:${unit.id}`; const modelId = project.confirmedModelIds[key]?.[0]; const model = models.find((item) => item.id === modelId); return <article key={key}><span>{analyses.find((item) => item.id === analysisId)?.nameTr}</span><h3>{unit.name}</h3>{model ? <p><CheckCircle2 size={16} /> Kullanıcı seçimi: <strong>{model.nameTr}</strong></p> : <p className="deferred"><CircleHelp size={16} /> Model seçilmedi; karar verisi istendi.</p>}</article>; }))}</div>}
+      {view === "quality" && <div id="panel-quality" role="tabpanel" aria-labelledby="tab-quality" className="quality-grid"><section><h3>Kritik uyarılar</h3>{result.warnings.map((warning) => <p key={warning}><AlertTriangle size={15} />{warning}</p>)}</section><section><h3>Kaynak izi</h3>{result.sources.map((source) => <p key={source.id}><BookOpen size={15} /><span><strong>{source.title}</strong><small>{source.locator} · doğrulama {source.verifiedAt}</small></span></p>)}</section></div>}
+      <div className="parity-note"><ShieldCheck size={18} /><div><strong>Tek kaynak, üç çıktı</strong><p>DOCX, PDF ve XLSX aynı {uniqueParameterCount} parametre, {result.requirements.length} mühendislik alt koşulu, {testGroups.length} deney yöntemi ve {result.tests.length} uygulama/protokol ayrımından üretilir.</p></div></div>
     </div>
   );
 }
@@ -512,6 +673,7 @@ function Wizard({ initialProject, knowledge, installedVersion, onHome, onKnowled
   const [maxReached, setMaxReached] = useState(0);
   const [detail, setDetail] = useState<ConsolidatedRequirement | null>(null);
   const [toast, setToast] = useState("");
+  const [isExporting, setIsExporting] = useState(false);
   const update = (patch: Partial<GaiaProject>) => setProject((current) => ({ ...current, ...patch, updatedAt: new Date().toISOString() }));
   const result = useMemo(() => buildCanonicalResult(project, knowledge), [project, knowledge]);
   const modelContexts = project.selectedAnalysisIds.flatMap((analysisId) => project.groundUnits.map((unit) => `${analysisId}:${unit.id}`));
@@ -535,8 +697,13 @@ function Wizard({ initialProject, knowledge, installedVersion, onHome, onKnowled
   };
   const exportBundle = async () => {
     if (!window.gaia) return setToast("Dışa aktarım masaüstü uygulamasında kullanılabilir.");
-    const answer = await window.gaia.exportBundle(result);
-    setToast(answer.error ?? (answer.canceled ? "Dışa aktarım iptal edildi." : `Paket hazır: ${answer.directory}`));
+    setIsExporting(true);
+    try {
+      const answer = await window.gaia.exportBundle(result);
+      setToast(answer.error ?? (answer.canceled ? "Dışa aktarım iptal edildi." : "DOCX, PDF ve Excel hazır. Çıktı klasörü açıldı."));
+    } finally {
+      setIsExporting(false);
+    }
   };
   const importKnowledge = async () => {
     if (!window.gaia) return setToast("Bilgi paketi içe aktarımı masaüstü uygulamasında kullanılabilir.");
@@ -555,10 +722,10 @@ function Wizard({ initialProject, knowledge, installedVersion, onHome, onKnowled
     {active === 0 && <ProjectStep project={project} update={update} />}
     {active === 1 && <AnalysesStep project={project} update={update} />}
     {active === 2 && <UnitsStep project={project} update={update} />}
-    {active === 3 && <ConditionsStep project={project} update={update} />}
+    {active === 3 && <ConditionsStep project={project} update={update} onOpenAnalyses={() => setActive(1)} />}
     {active === 4 && <ModelsStep project={project} update={update} knowledge={knowledge} />}
-    {active === 5 && <ResultsStep result={result} project={project} onExport={exportBundle} onDetail={setDetail} />}
-  </main><footer className="wizard-footer"><button className="button button-quiet" onClick={() => setActive(Math.max(0, active - 1))} disabled={active === 0}><ArrowLeft size={17} /> Geri</button><div><span>Adım {active + 1} / {steps.length}</span><div className="footer-progress"><i style={{ width: `${((active + 1) / steps.length) * 100}%` }} /></div></div>{active < steps.length - 1 ? <button className="button button-primary" onClick={goNext} disabled={!canNext}>Devam et <ArrowRight size={17} /></button> : <span className="footer-complete"><CheckCircle2 size={16} /> Sonuç hazır</span>}</footer></div>
+    {active === 5 && <ResultsStep result={result} project={project} onDetail={setDetail} />}
+  </main><footer className="wizard-footer"><button className="button button-quiet" onClick={() => setActive(Math.max(0, active - 1))} disabled={active === 0}><ArrowLeft size={17} /> Geri</button><div><span>Adım {active + 1} / {steps.length}</span><div className="footer-progress"><i style={{ width: `${((active + 1) / steps.length) * 100}%` }} /></div></div>{active < steps.length - 1 ? <button className="button button-primary" onClick={goNext} disabled={!canNext}>Devam et <ArrowRight size={17} /></button> : <button className="button button-primary export-button" onClick={exportBundle} disabled={isExporting} aria-busy={isExporting}><Download size={17} />{isExporting ? "Dosyalar hazırlanıyor…" : result.engineeringUseAllowed ? "DOCX, PDF ve Excel oluştur" : "Taslak DOCX, PDF ve Excel oluştur"}</button>}</footer></div>
     <DetailDrawer requirement={detail} onClose={() => setDetail(null)} />
     {toast && <div className="toast" role="status"><CheckCircle2 size={18} /><span>{toast}</span><button onClick={() => setToast("")}><X size={15} /></button></div>}
   </div>;
