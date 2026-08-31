@@ -4,7 +4,7 @@ import net from "node:net";
 import { resolve } from "node:path";
 import { spawn } from "node:child_process";
 
-const executablePath = resolve(process.argv[2] ?? "release/GAIA-Portable-0.1.0-review.2-x64.exe");
+const executablePath = resolve(process.argv[2] ?? "release/GAIA-Portable-0.1.0-review.3-x64.exe");
 const userDataDir = resolve("test-results", `portable-smoke-${Date.now()}`);
 rmSync(userDataDir, { recursive: true, force: true });
 
@@ -46,14 +46,15 @@ try {
 
   await page.getByRole("button", { name: /Yeni proje/i }).click();
   await page.getByRole("button", { name: /Devam et/i }).click();
-  await page.getByRole("button", { name: /^Konsolidasyon/i }).click();
+  await page.getByRole("button", { name: /Zamana bağlı oturma/i }).click();
+  await page.getByRole("button", { name: /Konsolidasyon ve oturma süresi/i }).click();
   await page.getByRole("button", { name: /Devam et/i }).click();
   await page.locator("select").first().selectOption("sand");
   await page.getByRole("button", { name: /Devam et/i }).click();
   await page.getByRole("button", { name: /Devam et/i }).click();
-  await page.getByRole("button", { name: /Karar verisi talebiyle devam et/i }).click();
+  await page.getByRole("button", { name: /Karar için veri iste/i }).click();
   await page.getByRole("button", { name: "Devam et", exact: true }).click();
-  if (await page.locator(".result-table td").getByText("Malzeme modeli karar veri paketi", { exact: true }).count() !== 1) throw new Error("Taşınabilir paket kilitli model yolunu doğru sonuçlandıramadı.");
+  if (await page.getByTestId("geotechnical-work-order").getByText("Malzeme modeli karar veri paketi", { exact: true }).count() !== 1) throw new Error("Taşınabilir paket kilitli model yolunu doğru sonuçlandıramadı.");
   console.log(`PORTABLE_SMOKE_OK ${executablePath} ${JSON.stringify(boundary)}`);
 } finally {
   if (page && !page.isClosed()) await page.close().catch(() => undefined);

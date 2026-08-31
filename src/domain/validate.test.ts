@@ -27,4 +27,16 @@ describe("proje–bilgi paketi bağ doğrulaması", () => {
   it("bilinmeyen birimde model seçimini reddeder", () => {
     expect(() => validateProjectReferences(project(unit("unknown")), builtInKnowledge)).toThrow(/türü bilinmeden/i);
   });
+
+  it("kısmi doğrulanmış modeli hazırlanmış proje dosyasından dahi reddeder", () => {
+    const p = project(unit("clay"));
+    p.confirmedModelIds["linear-static:GU-1"] = ["tresca"];
+    expect(() => validateProjectReferences(p, builtInKnowledge)).toThrow(/seçime açık değildir/i);
+  });
+
+  it("bloke modeli hazırlanmış proje dosyasından dahi reddeder", () => {
+    const p = project();
+    p.confirmedModelIds["linear-static:GU-1"] = ["drucker-prager"];
+    expect(() => validateProjectReferences(p, builtInKnowledge)).toThrow(/seçime açık değildir/i);
+  });
 });

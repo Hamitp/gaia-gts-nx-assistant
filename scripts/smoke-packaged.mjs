@@ -30,15 +30,16 @@ try {
   await page.getByRole("button", { name: /Yeni proje/i }).click();
   await page.getByRole("textbox", { name: /^Proje adı/i }).fill("Paketli EXE doğrulaması");
   await page.getByRole("button", { name: /Devam et/i }).click();
-  await page.getByRole("button", { name: /^Konsolidasyon/i }).click();
+  await page.getByRole("button", { name: /Zamana bağlı oturma/i }).click();
+  await page.getByRole("button", { name: /Konsolidasyon ve oturma süresi/i }).click();
   await page.getByRole("button", { name: /Devam et/i }).click();
   await page.getByLabel("1. birim adı").fill("Kum Birimi");
   await page.locator("select").first().selectOption("sand");
   await page.getByRole("button", { name: /Devam et/i }).click();
   await page.getByRole("button", { name: /Devam et/i }).click();
-  const safeAction = page.getByRole("button", { name: /Karar verisi talebiyle devam et/i });
+  const safeAction = page.getByRole("button", { name: /Karar için veri iste/i });
   if (!await safeAction.isVisible()) throw new Error("Kilitli model bağlamında güvenli ilerleme eylemi görünmüyor.");
-  if (await page.locator(".model-card").count()) throw new Error("Kilitli model bağlamında seçilebilir model kartı gösterildi.");
+  if (await page.locator(".simple-model-card").count()) throw new Error("Kilitli model bağlamında seçilebilir model kartı gösterildi.");
   const footer = page.locator(".wizard-footer");
   const footerBox = await footer.boundingBox();
   const innerHeight = await page.evaluate(() => window.innerHeight);
@@ -50,7 +51,7 @@ try {
   await application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.webContents.setZoomFactor(1));
   await safeAction.click();
   await page.getByRole("button", { name: "Devam et", exact: true }).click();
-  const modelDecisionRequests = page.locator(".result-table td").getByText("Malzeme modeli karar veri paketi", { exact: true });
+  const modelDecisionRequests = page.getByTestId("geotechnical-work-order").getByText("Malzeme modeli karar veri paketi", { exact: true });
   if (await modelDecisionRequests.count() !== 1) throw new Error("Kilitli model yolu tam bir adet model karar veri talebi üretmedi.");
   console.log(`PACKAGED_SMOKE_OK ${executablePath} ${JSON.stringify(boundary)}`);
 } finally {

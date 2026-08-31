@@ -46,6 +46,24 @@ const normalizeVisibleText = (value) => value.normalize("NFC").replace(/\s+/g, "
 const docxVisibleText = normalizeVisibleText(documentXml.replace(/<[^>]+>/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&apos;/g, "'").replace(/&quot;/g, '"'));
 const xlsxVisibleText = normalizeVisibleText(workbookText);
 const pdfVisibleText = normalizeVisibleText(pdfResult.text);
+const workSheet = workbook.worksheets.find((sheet) => sheet.name.includes("01_IS_EMRI"));
+if (!workSheet || workbook.worksheets[0] !== workSheet) throw new Error("XLSX ilk görünür sayfası geoteknik ekip iş emri değil.");
+const workSheetText = normalizeVisibleText(workSheet.getSheetValues().flat(Infinity).map(String).join(" "));
+if (/REQ-[A-F0-9]{8}|TST-[A-F0-9]{8}|=>/.test(workSheetText)) throw new Error("XLSX görünür iş emrinde makine kimliği/bağlantı kodu bulunuyor.");
+const workRows = workSheet.getRows(4, Math.max(0, workSheet.rowCount - 3)) ?? [];
+const visibleWorkRows = workRows.map((row) => ({ kind: String(row.getCell(1).value ?? ""), name: String(row.getCell(3).value ?? ""), units: String(row.getCell(5).value ?? ""), outputs: String(row.getCell(6).value ?? ""), raw: String(row.getCell(7).value ?? "") })).filter((row) => row.name);
+const testWorkRows = visibleWorkRows.filter((row) => row.kind === "SAHA ÇALIŞMASI" || row.kind === "LABORATUVAR DENEYİ");
+if (testWorkRows.length !== expectedTests.length) throw new Error(`XLSX sade iş emrinde deney tekilleştirmesi başarısız. Beklenen ${expectedTests.length}, bulunan ${testWorkRows.length}.`);
+if (new Set(testWorkRows.map((row) => row.name)).size !== testWorkRows.length) throw new Error("XLSX sade iş emrinde tekrarlı deney adı bulundu.");
+for (const row of visibleWorkRows) {
+  if (!row.units || !row.outputs || !row.raw) throw new Error(`XLSX iş emri satırı eksik: ${row.name}`);
+  const expectedName = normalizeVisibleText(row.name);
+  if (!docxVisibleText.includes(expectedName)) throw new Error(`DOCX sade iş emri satırı eksik: ${expectedName}`);
+  if (!pdfVisibleText.includes(expectedName)) throw new Error(`PDF sade iş emri satırı eksik: ${expectedName}`);
+}
+for (const content of [docxVisibleText, pdfVisibleText, xlsxVisibleText]) {
+  if (!content.toLocaleLowerCase("tr").includes("geoteknik ekip için iş emri")) throw new Error("Sade iş emri başlığı üç formatın birinde eksik.");
+}
 
 const assertEqual = (label, actual, expected) => {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`${label} paritesi başarısız. Beklenen ${expected.length}, bulunan ${actual.length}.`);

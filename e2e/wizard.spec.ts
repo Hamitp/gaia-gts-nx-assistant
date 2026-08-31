@@ -26,10 +26,15 @@ test("yeni projeden tekrarsız sonuç ekranına kesintisiz ilerler", async () =>
   await page.getByRole("button", { name: /Yeni proje/i }).click();
   await page.getByRole("textbox", { name: /^Proje adı/i }).fill("E2E Liman Projesi");
   await page.getByRole("button", { name: /Devam et/i }).click();
-  await page.getByRole("button", { name: /Doğrusal olmayan statik/i }).click();
-  await page.getByRole("button", { name: /Yapım aşamalı analiz/i }).click();
-  await page.getByRole("button", { name: /^Dayanım azaltma yöntemi/i }).click();
+  await page.getByRole("button", { name: /Gerçekçi kalıcı deformasyon/i }).click();
+  await page.getByRole("button", { name: /Kazı ve yapım sırası/i }).click();
+  await page.getByRole("button", { name: /Yapım aşamalarını sırayla incele/i }).click();
+  await page.getByRole("button", { name: /Göçme ve stabilite güvenliği/i }).click();
+  await page.getByRole("button", { name: /Güvenlik katsayısını doğrudan bul/i }).click();
   await expect(page.locator(".selection-count").getByText("3", { exact: true })).toBeVisible();
+  await page.setViewportSize({ width: 1280, height: 720 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  await page.screenshot({ path: "test-results/gaia-analyses.png", fullPage: true });
   await page.getByRole("button", { name: /Devam et/i }).click();
   await page.getByLabel("1. birim adı").fill("Kum Tabakası");
   await page.locator("select").first().selectOption("sand");
@@ -37,13 +42,23 @@ test("yeni projeden tekrarsız sonuç ekranına kesintisiz ilerler", async () =>
   await page.getByRole("button", { name: /Yaklaşık sabit/i }).click();
   await page.getByRole("button", { name: /Her ikisi/i }).click();
   await page.getByRole("button", { name: /Devam et/i }).click();
-  const modelContexts = page.locator(".model-context");
-  for (let index = 0; index < await modelContexts.count(); index += 1) await modelContexts.nth(index).locator(".model-card").first().click();
+  await expect(page.getByText(/0 \/ 3/)).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  await page.screenshot({ path: "test-results/gaia-models.png", fullPage: true });
+  for (let index = 0; index < 3; index += 1) {
+    const openDecision = page.locator(".model-decision.open");
+    await expect(openDecision).toHaveCount(1);
+    await openDecision.locator(".simple-model-card").first().click();
+  }
+  await expect(page.getByText(/3 \/ 3/)).toBeVisible();
   await page.getByRole("button", { name: /Devam et/i }).click();
-  await expect(page.getByRole("heading", { name: /Tek proje. Tekrarsız/i })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Geoteknik ekibin uygulayabileceği/i })).toBeVisible();
+  await expect(page.getByTestId("geotechnical-work-order")).toBeVisible();
   await expect(page.getByText(/parametre \/ mühendislik koşulu/i)).toBeVisible();
   await expect(page.getByText("Efektif içsel sürtünme açısı").first()).toBeVisible();
-  await page.getByRole("tab", { name: /Deney programı/i }).click();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  await page.screenshot({ path: "test-results/gaia-work-order.png", fullPage: true });
+  await page.getByRole("tab", { name: /Deney matrisi/i }).click();
   await expect(page.locator(".test-program-table .variant-list b").filter({ hasText: /^Zorunlu$/ }).first()).toBeVisible();
   await expect(page.locator(".test-program-table .variant-list small").filter({ hasText: /^Kum Tabakası$/ }).first()).toBeVisible();
   await page.screenshot({ path: "test-results/gaia-result.png", fullPage: true });
@@ -57,17 +72,18 @@ test("tümü kilitli konsolidasyon modellerinde karar verisi talebiyle ilerler",
 
   await page.getByRole("button", { name: /Yeni proje/i }).click();
   await page.getByRole("button", { name: /Devam et/i }).click();
-  await page.getByRole("button", { name: /^Konsolidasyon/i }).click();
+  await page.getByRole("button", { name: /Zamana bağlı oturma/i }).click();
+  await page.getByRole("button", { name: /Konsolidasyon ve oturma süresi/i }).click();
   await page.getByRole("button", { name: /Devam et/i }).click();
   await page.getByLabel("1. birim adı").fill("Kum Birimi");
   await page.locator("select").first().selectOption("sand");
   await page.getByRole("button", { name: /Devam et/i }).click();
   await page.getByRole("button", { name: /Devam et/i }).click();
 
-  const safeRoute = page.locator(".locked-model-route");
-  await expect(safeRoute.getByText(/doğrulanmış seçilebilir model yok/i)).toBeVisible();
-  await expect(page.locator(".model-card")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: /Karar verisi talebiyle devam et/i })).toBeVisible();
+  const safeRoute = page.locator(".model-data-route").last();
+  await expect(safeRoute.getByText(/Henüz güvenli model kararı veremiyorum/i)).toBeVisible();
+  await expect(page.locator(".simple-model-card")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Karar için veri iste/i })).toBeVisible();
 
   const footer = page.locator(".wizard-footer");
   const footerBox = await footer.boundingBox();
@@ -80,15 +96,15 @@ test("tümü kilitli konsolidasyon modellerinde karar verisi talebiyle ilerler",
   expect(scaledFooterBox!.y + scaledFooterBox!.height).toBeLessThanOrEqual(await page.evaluate(() => window.innerHeight + 1));
   await application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.webContents.setZoomFactor(1));
 
-  await page.getByRole("button", { name: /Karar verisi talebiyle devam et/i }).click();
-  await expect(safeRoute.getByText(/Karar verisi talebe eklendi/i)).toBeVisible();
+  await page.getByRole("button", { name: /Karar için veri iste/i }).click();
+  await expect(page.getByText(/Model seçilmedi; karar verileri talebe eklendi/i)).toBeVisible();
   const nextButton = page.getByRole("button", { name: "Devam et", exact: true });
   await expect(nextButton).toBeEnabled();
   await nextButton.click();
 
-  await expect(page.getByRole("heading", { name: /Tek proje. Tekrarsız/i })).toBeVisible();
-  await expect(page.locator(".result-table td").getByText("Malzeme modeli karar veri paketi", { exact: true })).toHaveCount(1);
+  await expect(page.getByRole("heading", { name: /Geoteknik ekibin uygulayabileceği/i })).toBeVisible();
+  await expect(page.getByTestId("geotechnical-work-order").getByText("Malzeme modeli karar veri paketi", { exact: true })).toHaveCount(1);
   await page.getByRole("tab", { name: /Model kararları/i }).click();
-  await expect(page.getByText(/Model kararı ertelendi; veri istenecek/i)).toBeVisible();
+  await expect(page.getByText(/Model seçilmedi; karar verisi istendi/i)).toBeVisible();
   await application.close();
 });

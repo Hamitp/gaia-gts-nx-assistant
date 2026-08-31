@@ -71,6 +71,20 @@ describe("tüm parametrelerde anlamsal tekilleştirme", () => {
     expect(oedometer[0].parameterIds).toEqual(expect.arrayContaining(["compression-index", "swelling-index", "preconsolidation", "cv"]));
   });
 
+  it("aynı deney protokolünü farklı mühendislik alt koşullarında iş emrinde tekrarlamaz", () => {
+    const payload = payloadFor("friction-angle-effective", [
+      { parameterId: "friction-angle-effective", level: "required", drainage: "drained", strengthState: "peak", stressPath: "compression" },
+      { parameterId: "friction-angle-effective", level: "required", drainage: "drained", strengthState: "critical", stressPath: "compression" },
+      { parameterId: "friction-angle-effective", level: "conditional", drainage: "drained", strengthState: "peak", stressPath: "extension" },
+    ]);
+    const p = project(["a-0", "a-1", "a-2"], [unitA]);
+    const program = consolidateTests(consolidateRequirements(p, payload), payload, p);
+    const cd = program.filter((item) => item.method.id === "triaxial-cd");
+    expect(cd).toHaveLength(1);
+    expect(cd[0].requirementIds).toHaveLength(3);
+    expect(cd[0].applicability).toHaveLength(3);
+  });
+
   it("bilinmeyen katalog referansını sessizce atmaz", () => {
     const payload = payloadFor("young-modulus", [{ parameterId: "does-not-exist", level: "required" }]);
     payload.analyses[0].requirements[0].parameterId = "does-not-exist";

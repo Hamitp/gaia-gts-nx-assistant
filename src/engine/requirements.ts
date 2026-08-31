@@ -266,7 +266,10 @@ export function consolidateTests(
       const method = payload.tests.find((item) => item.id === testId);
       if (!method) throw new Error(`Bilgi paketi bozuk: ${requirement.parameter.id} için ${testId} deney kimliği bulunamadı.`);
       const condition = testSpecimenCondition(requirement.specimenCondition);
-      const key = [testId, specimenClass(requirement), unitGroup.materialClass, condition, requirement.drainage, requirement.stiffnessBasis, requirement.strengthBasis, requirement.strengthState, requirement.stressPath, requirement.direction, requirement.strainRange].join("|");
+      // One physical protocol is requested once. Engineering qualifiers remain
+      // traceable on each linked requirement/applicability item instead of
+      // duplicating the laboratory or field work-order row.
+      const key = [testId, specimenClass(requirement), condition].join("|");
       const existing = map.get(key);
       if (existing) {
         existing.parameterIds = unique([...existing.parameterIds, requirement.parameter.id]);
