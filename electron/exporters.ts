@@ -45,6 +45,54 @@ function selectedTestText(result: CanonicalResult, requirementId: string): strin
     : "Yöntem, model/koşul kararı sonrası belirlenecek";
 }
 
+function groupRequirements(requirements: ConsolidatedRequirement[]): ConsolidatedRequirement[][] {
+  const groups = new Map<string, ConsolidatedRequirement[]>();
+  for (const requirement of requirements) groups.set(requirement.parameter.id, [...(groups.get(requirement.parameter.id) ?? []), requirement]);
+  return [...groups.values()];
+}
+
+function parameterConcepts(result: CanonicalResult): ConsolidatedRequirement[][] {
+  return groupRequirements(result.requirements);
+}
+
+function groupedTests(result: CanonicalResult): CanonicalResult["tests"][] {
+  const groups = new Map<string, CanonicalResult["tests"]>();
+  for (const item of result.tests) {
+    groups.set(item.method.id, [...(groups.get(item.method.id) ?? []), item]);
+  }
+  return [...groups.values()];
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return [...new Set(values)];
+}
+
+function conceptIds(requirements: ConsolidatedRequirement[]): string {
+  return requirements.map((item) => item.id).join("\n");
+}
+
+function conceptContexts(requirements: ConsolidatedRequirement[]): string {
+  return requirements.map((item) => `${item.id} · ${trLevel[item.level]} · ${contextLabel(item)}`).join("\n");
+}
+
+function conceptAnalyses(result: CanonicalResult, requirements: ConsolidatedRequirement[]): string {
+  return uniqueStrings(requirements.flatMap((item) => item.analysisIds)).map((id) => analysisText(result, id)).join("\n");
+}
+
+function conceptUnits(result: CanonicalResult, requirements: ConsolidatedRequirement[], plain = false): string {
+  const ids = uniqueStrings(requirements.flatMap((item) => item.groundUnitIds));
+  if (!ids.length) return "Proje geneli";
+  return ids.map((id) => plain ? plainUnitText(result, id) : unitText(result, id)).join(plain ? "; " : "\n");
+}
+
+function conceptTests(result: CanonicalResult, requirements: ConsolidatedRequirement[]): string {
+  return uniqueStrings(requirements.map((item) => selectedTestText(result, item.id))).join("\n");
+}
+
+function highestRequirementLevel(requirements: ConsolidatedRequirement[]): string {
+  return requirements.reduce((highest, item) => (levelRank[item.level] ?? 0) > (levelRank[highest] ?? 0) ? item.level : highest, "recommended");
+}
+
 function analysisText(result: CanonicalResult, id: string): string {
   const label = result.analysisLabels[id];
   return label ? `${label.nameTr} / ${label.officialName} [${id}]` : id;
@@ -65,6 +113,66 @@ function testApplicabilityText(result: CanonicalResult, test: CanonicalResult["t
     const units = use.groundUnitIds.map((id) => unitText(result, id)).join(", ") || "Proje geneli";
     return `${trLevel[use.level]}: ${units}`;
   }).join("; ");
+}
+
+function groupedTestApplicabilityText(result: CanonicalResult, tests: CanonicalResult["tests"]): string {
+  const byLevel = new Map<string, Set<string>>();
+  for (const test of tests) {
+    for (const use of test.applicability) {
+      const units = byLevel.get(use.level) ?? new Set<string>();
+      if (!use.groundUnitIds.length) units.add("");
+      else use.groundUnitIds.forEach((id) => units.add(id));
+      byLevel.set(use.level, units);
+    }
+  }
+  return [...byLevel.entries()]
+    .sort(([left], [right]) => (levelRank[right] ?? 0) - (levelRank[left] ?? 0))
+    .map(([level, unitIds]) => {
+      const units = unitIds.has("") ? "Proje geneli" : [...unitIds].map((id) => unitText(result, id)).join(", ");
+      return `${trLevel[level]}: ${units}`;
+    })
+    .join("; ");
+}
+
+const scopeLabels: Record<string, string> = {
+  interface: "Arayüz numunesi",
+  pile: "Kazık sistemi / elemanı",
+  structure: "Yapısal eleman / ürün",
+  project: "Proje geneli",
+  "ground-unit": "Zemin / kaya numunesi",
+};
+const protocolDrainageLabels: Record<string, string> = { drained: "Drenajlı", "undrained-effective": "Drenajsız · efektif gerilme", "undrained-total": "Drenajsız · toplam gerilme" };
+const protocolStrengthLabels: Record<string, string> = { peak: "Pik dayanım", critical: "Kritik durum", residual: "Rezidüel dayanım", "post-cyclic": "Çevrim sonrası" };
+
+function testProtocolText(result: CanonicalResult, test: CanonicalResult["tests"][number]): string {
+  const requirements = test.requirementIds
+    .map((id) => result.requirements.find((item) => item.id === id))
+    .filter((item): item is ConsolidatedRequirement => Boolean(item));
+  const scopes = uniqueStrings(requirements.map((item) => scopeLabels[item.parameter.scope] ?? scopeLabels["ground-unit"]));
+  const drainage = uniqueStrings(requirements.map((item) => item.drainage).filter((item) => item !== "any")).map((item) => protocolDrainageLabels[item] ?? item);
+  const strength = uniqueStrings(requirements.map((item) => item.strengthState).filter((item) => item !== "any")).map((item) => protocolStrengthLabels[item] ?? item);
+  const directions = uniqueStrings(requirements.map((item) => item.direction).filter((item) => item !== "any"));
+  const specimenConditions = uniqueStrings(requirements.map((item) => item.specimenCondition).filter((item) => item !== "any"));
+  return [...scopes, ...drainage, ...strength, ...directions, ...specimenConditions].join(" · ") || "Standart deney protokolü";
+}
+
+function groupedTestProtocols(result: CanonicalResult, tests: CanonicalResult["tests"]): string {
+  return tests.map((item) => testProtocolWorkText(result, item)).join("\n");
+}
+
+function testProtocolWorkText(result: CanonicalResult, test: CanonicalResult["tests"][number]): string {
+  const byLevel = new Map<string, Set<string>>();
+  for (const use of test.applicability) {
+    const units = byLevel.get(use.level) ?? new Set<string>();
+    if (!use.groundUnitIds.length) units.add("");
+    else use.groundUnitIds.forEach((id) => units.add(id));
+    byLevel.set(use.level, units);
+  }
+  const applicability = [...byLevel.entries()]
+    .sort(([left], [right]) => (levelRank[right] ?? 0) - (levelRank[left] ?? 0))
+    .map(([level, unitIds]) => `${plainLevel[level]}: ${unitIds.has("") ? "Proje geneli" : [...unitIds].map((id) => plainUnitText(result, id)).join(", ")}`)
+    .join("; ");
+  return `${testProtocolText(result, test)} — ${applicability}`;
 }
 
 function plainUnitText(result: CanonicalResult, id: string): string {
@@ -91,32 +199,38 @@ interface WorkOrderRow {
 
 function buildWorkOrderRows(result: CanonicalResult): WorkOrderRow[] {
   const linkedRequirementIds = new Set(result.tests.flatMap((item) => item.requirementIds));
-  const decisions = result.requirements.filter((item) => item.level === "missing-decision").map((item) => ({
+  const decisions = groupRequirements(result.requirements.filter((item) => item.level === "missing-decision")).map((items) => ({
     kind: "ÖNCE NETLEŞTİRİN",
-    level: plainLevel[item.level],
-    name: item.parameter.nameTr,
+    level: plainLevel[highestRequirementLevel(items)],
+    name: items[0].parameter.nameTr,
     standard: "Uzman kararı / ölçüm kanıtı",
-    units: item.groundUnitIds.map((id) => plainUnitText(result, id)).join("; ") || "Proje geneli",
-    outputs: item.parameter.why,
-    raw: item.parameter.rawRequest,
+    units: conceptUnits(result, items, true),
+    outputs: items[0].parameter.why,
+    raw: items[0].parameter.rawRequest,
   }));
-  const tests = result.tests.map((item) => ({
-    kind: fieldTestIds.has(item.method.id) ? "SAHA ÇALIŞMASI" : "LABORATUVAR DENEYİ",
-    level: plainLevel[highestTestLevel(item)],
-    name: item.method.nameTr,
-    standard: item.method.standardPrimary,
-    units: item.groundUnitIds.map((id) => plainUnitText(result, id)).join("; ") || "Proje geneli",
-    outputs: item.parameterIds.map((id) => plainParameterText(result, id)).join("; "),
-    raw: item.method.rawDeliverables.join("; "),
-  }));
-  const direct = result.requirements.filter((item) => item.level !== "missing-decision" && !linkedRequirementIds.has(item.id)).map((item) => ({
+  const tests = groupedTests(result).map((items) => {
+    const item = items[0];
+    const highest = items.reduce((level, candidate) => (levelRank[highestTestLevel(candidate)] ?? 0) > (levelRank[level] ?? 0) ? highestTestLevel(candidate) : level, "recommended");
+    const unitIds = uniqueStrings(items.flatMap((candidate) => candidate.groundUnitIds));
+    const parameterIds = uniqueStrings(items.flatMap((candidate) => candidate.parameterIds));
+    return {
+      kind: fieldTestIds.has(item.method.id) ? "SAHA ÇALIŞMASI" : "LABORATUVAR DENEYİ",
+       level: items.length > 1 ? "Uygulamaya göre aşağıda belirtilmiştir" : plainLevel[highest],
+      name: item.method.nameTr,
+      standard: item.method.standardPrimary,
+      units: unitIds.map((id) => plainUnitText(result, id)).join("; ") || "Proje geneli",
+      outputs: `${parameterIds.map((id) => plainParameterText(result, id)).join("; ")}${items.length > 1 ? `\nUygulama / protokol ayrımları: ${groupedTestProtocols(result, items)}` : ""}`,
+      raw: item.method.rawDeliverables.join("; "),
+    };
+  });
+  const direct = groupRequirements(result.requirements.filter((item) => item.level !== "missing-decision" && !linkedRequirementIds.has(item.id))).map((items) => ({
     kind: "DOĞRUDAN VERİ TESLİMİ",
-    level: plainLevel[item.level],
-    name: item.parameter.nameTr,
+    level: plainLevel[highestRequirementLevel(items)],
+    name: items[0].parameter.nameTr,
     standard: "Proje/saha kaydı",
-    units: item.groundUnitIds.map((id) => plainUnitText(result, id)).join("; ") || "Proje geneli",
-    outputs: item.parameter.why,
-    raw: item.parameter.rawRequest,
+    units: conceptUnits(result, items, true),
+    outputs: items[0].parameter.why,
+    raw: items[0].parameter.rawRequest,
   }));
   return [...decisions, ...tests, ...direct];
 }
@@ -152,11 +266,30 @@ function workCell(value: string, bold = false): TableCell {
 async function makeDocx(result: CanonicalResult, path: string): Promise<void> {
   const isDraft = !result.engineeringUseAllowed;
   const a = audit(result);
+  const concepts = parameterConcepts(result);
   const title = new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 180 }, children: [new TextRun({ text: "GAIA", bold: true, color: "123D4A", size: 48 }), new TextRun({ text: "\nGTS NX GEOTEKNİK VERİ TALEBİ", bold: true, color: "2B8179", size: 23 })] });
   const draft = isDraft ? new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 220 }, children: [new TextRun({ text: "İNCELEME TASLAĞI — BAĞIMSIZ GEOTEKNİK UZMAN ONAYI GEREKLİDİR", bold: true, color: "A3484F", size: 19 })] }) : new Paragraph("");
-  const requirementRows = [new TableRow({ tableHeader: true, cantSplit: true, children: [cell("Kimlik", true), cell("Durum / Talep", true), cell("Bağlam", true), cell("Analizler", true), cell("Birimler", true), cell("Seçilen birincil deney", true)] }), ...result.requirements.map((req) => new TableRow({ cantSplit: true, children: [cell(req.id), cell(`${trLevel[req.level]}\n${req.parameter.nameTr}\n${req.parameter.officialName} · ${req.parameter.symbol} [${req.parameter.unit}]`), cell(contextLabel(req)), cell(req.analysisIds.map((id) => analysisText(result, id)).join("\n")), cell(req.groundUnitIds.map((id) => unitText(result, id)).join("\n") || "Proje geneli"), cell(selectedTestText(result, req.id))] }))];
-  const rawRequestParagraphs = result.requirements.map((req) => new Paragraph({ keepNext: false, spacing: { after: 110 }, children: [new TextRun({ text: `${req.id} · ${req.parameter.nameTr}\n`, bold: true, color: "154B57", size: 18 }), new TextRun({ text: `Kullanım yeri: ${req.parameter.gtsPath}\n`, italics: true, color: "4B6871", size: 17 }), new TextRun({ text: `Ham teslim talebi: ${req.parameter.rawRequest}`, size: 18 }), ...(req.parameter.limitations.length ? [new TextRun({ text: `\nDikkat: ${req.parameter.limitations.join(" ")}`, color: "8E4E2C", size: 17 })] : [])] }));
-  const testRows = [new TableRow({ tableHeader: true, cantSplit: true, children: [cell("Kimlik", true), cell("Deney", true), cell("Standart", true), cell("Sağladığı parametreler", true), cell("Durum / birimler", true), cell("Ham teslim", true)] }), ...result.tests.map((item) => new TableRow({ cantSplit: true, children: [cell(item.id), cell(`${item.method.nameTr}\n${item.method.nameEn}`), cell(`${item.method.standardPrimary}${item.method.standardAlternative ? `\nAlternatif: ${item.method.standardAlternative}` : ""}`), cell(item.parameterIds.map((id) => parameterText(result, id)).join("\n")), cell(testApplicabilityText(result, item)), cell(item.method.rawDeliverables.join("; "))] }))];
+  const requirementRows = [new TableRow({ tableHeader: true, cantSplit: true, children: [cell("Kimlikler", true), cell("Parametre", true), cell("Alt gereksinimler", true), cell("Kullanıldığı analizler", true), cell("Birimler", true), cell("Seçilen birincil deney", true)] }), ...concepts.map((items) => { const parameter = items[0].parameter; return new TableRow({ cantSplit: true, children: [cell(conceptIds(items)), cell(`${parameter.nameTr}\n${parameter.officialName} · ${parameter.symbol} [${parameter.unit}]`), cell(conceptContexts(items)), cell(conceptAnalyses(result, items)), cell(conceptUnits(result, items)), cell(conceptTests(result, items))] }); })];
+  const rawRequestParagraphs = concepts.map((items) => { const parameter = items[0].parameter; return new Paragraph({ keepNext: false, spacing: { after: 110 }, children: [new TextRun({ text: `${parameter.nameTr}\n`, bold: true, color: "154B57", size: 18 }), new TextRun({ text: `Gereksinimler: ${items.map((item) => item.id).join(", ")}\n`, color: "4B6871", size: 17 }), new TextRun({ text: `Kullanım yeri: ${parameter.gtsPath}\n`, italics: true, color: "4B6871", size: 17 }), new TextRun({ text: `Ham teslim talebi: ${parameter.rawRequest}`, size: 18 }), ...(parameter.limitations.length ? [new TextRun({ text: `\nDikkat: ${parameter.limitations.join(" ")}`, color: "8E4E2C", size: 17 })] : [])] }); });
+  const testRows = [
+    new TableRow({ tableHeader: true, cantSplit: true, children: [cell("Kimlikler", true), cell("Deney", true), cell("Standart", true), cell("Sağladığı parametreler", true), cell("Uygulama / protokol ve birimler", true), cell("Ham teslim", true)] }),
+    ...groupedTests(result).map((items) => {
+      const item = items[0];
+      const parameterIds = uniqueStrings(items.flatMap((candidate) => candidate.parameterIds));
+      const links = items.flatMap((candidate) => candidate.requirementIds.map((requirementId) => `${requirementId}=>${candidate.id}`));
+      return new TableRow({
+        cantSplit: true,
+        children: [
+          cell(items.map((candidate) => candidate.id).join("\n")),
+          cell(`${item.method.nameTr}\n${item.method.nameEn}`),
+          cell(`${item.method.standardPrimary}${item.method.standardAlternative ? `\nAlternatif: ${item.method.standardAlternative}` : ""}`),
+          cell(`${parameterIds.map((id) => parameterText(result, id)).join("\n")}\n${links.join("\n")}`),
+          cell(`${items.map((candidate) => `${candidate.id}: ${testProtocolWorkText(result, candidate)}`).join("\n")}\n${groupedTestApplicabilityText(result, items)}`),
+          cell(item.method.rawDeliverables.join("; ")),
+        ],
+      });
+    }),
+  ];
   const workOrderRows = [new TableRow({ tableHeader: true, cantSplit: true, children: [workCell("Öncelik / yapılacak iş", true), workCell("Uygulanacak birimler", true), workCell("Beklenen çıktılar", true), workCell("Ham kayıt ve dosyalar", true)] }), ...buildWorkOrderRows(result).map((item) => new TableRow({ cantSplit: true, children: [workCell(`${item.kind}\n${item.level}\n${item.name}\n${item.standard}`), workCell(item.units), workCell(item.outputs), workCell(item.raw)] }))];
   const doc = new Document({
     styles: { default: { document: { run: { font: "Aptos", size: 20, color: "263F49" }, paragraph: { spacing: { after: 100 } } } } },
@@ -175,12 +308,11 @@ async function makeDocx(result: CanonicalResult, path: string): Promise<void> {
         new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: workOrderRows, borders: { top: { style: BorderStyle.SINGLE, color: "AFCAC5", size: 2 }, bottom: { style: BorderStyle.SINGLE, color: "AFCAC5", size: 2 }, left: { style: BorderStyle.SINGLE, color: "AFCAC5", size: 2 }, right: { style: BorderStyle.SINGLE, color: "AFCAC5", size: 2 }, insideHorizontal: { style: BorderStyle.SINGLE, color: "DCE4E1", size: 1 }, insideVertical: { style: BorderStyle.SINGLE, color: "DCE4E1", size: 1 } } }),
         new Paragraph({ children: [new PageBreak()] }),
         new Paragraph({ heading: HeadingLevel.HEADING_1, text: "3. Teknik ek — birleştirilmiş parametre talepleri" }),
-        new Paragraph(`${result.requirements.length} benzersiz gereksinim; aynı mühendislik anlamındaki tekrarlar birleştirilmiştir.`),
+        new Paragraph(`${concepts.length} benzersiz parametre, ${result.requirements.length} mühendislik alt koşulu; aynı anlamdaki tekrarlar birleştirilmiştir.`),
         new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: requirementRows, borders: { top: { style: BorderStyle.SINGLE, color: "CAD3D1", size: 2 }, bottom: { style: BorderStyle.SINGLE, color: "CAD3D1", size: 2 }, left: { style: BorderStyle.SINGLE, color: "CAD3D1", size: 2 }, right: { style: BorderStyle.SINGLE, color: "CAD3D1", size: 2 }, insideHorizontal: { style: BorderStyle.SINGLE, color: "E2E7E4", size: 1 }, insideVertical: { style: BorderStyle.SINGLE, color: "E2E7E4", size: 1 } } }),
         new Paragraph({ heading: HeadingLevel.HEADING_2, text: "Ham veri teslim kapsamı" }),
         new Paragraph("Aşağıdaki ham kayıtlar, yalnız yorumlanmış sonuçlar yerine denetlenebilir veri iziyle birlikte teslim edilmelidir."),
         ...rawRequestParagraphs,
-        new Paragraph({ children: [new PageBreak()] }),
         new Paragraph({ heading: HeadingLevel.HEADING_1, text: "4. Teknik deney matrisi ve ham veri teslimleri" }),
         new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: testRows }),
         new Paragraph({ heading: HeadingLevel.HEADING_1, text: "5. Kaynak ve sürüm izi" }),
@@ -196,6 +328,7 @@ async function makeDocx(result: CanonicalResult, path: string): Promise<void> {
 
 async function makeXlsx(result: CanonicalResult, path: string): Promise<void> {
   const workbook = new ExcelJS.Workbook();
+  const concepts = parameterConcepts(result);
   workbook.creator = "GAIA"; workbook.created = new Date(result.generatedAt);
   const workSheet = workbook.addWorksheet(`${!result.engineeringUseAllowed ? "TASLAK_" : ""}01_IS_EMRI`);
   workSheet.columns = [
@@ -219,10 +352,26 @@ async function makeXlsx(result: CanonicalResult, path: string): Promise<void> {
   reqSheet.columns = [
     { header: "Gereksinim ID", key: "id", width: 17 }, { header: "Durum", key: "level", width: 21 }, { header: "Grup", key: "group", width: 18 }, { header: "Parametre (TR)", key: "tr", width: 28 }, { header: "GTS NX resmi alan adı / GAIA iş akışı", key: "en", width: 36 }, { header: "Sembol", key: "symbol", width: 12 }, { header: "Birim", key: "unit", width: 12 }, { header: "Kullanım yeri", key: "path", width: 45 }, { header: "Bağlam", key: "context", width: 33 }, { header: "Analizler", key: "analyses", width: 34 }, { header: "Jeoteknik birimler", key: "units", width: 31 }, { header: "Deney yolu", key: "method", width: 34 }, { header: "Ham teslim talebi", key: "raw", width: 65 }, { header: "Sınırlamalar / dikkat", key: "limitations", width: 55 }, { header: "Sorumlu", key: "owner", width: 18 }, { header: "Teslim tarihi", key: "due", width: 16 }, { header: "Dosya / QA", key: "qa", width: 24 },
   ];
-  result.requirements.forEach((req) => reqSheet.addRow({ id: req.id, level: trLevel[req.level], group: req.parameter.group, tr: safeSpreadsheet(req.parameter.nameTr), en: safeSpreadsheet(req.parameter.officialName), symbol: req.parameter.symbol, unit: req.parameter.unit, path: safeSpreadsheet(req.parameter.gtsPath), context: contextLabel(req), analyses: safeSpreadsheet(req.analysisIds.map((id) => analysisText(result, id)).join("; ")), units: safeSpreadsheet(req.groundUnitIds.map((id) => unitText(result, id)).join("; ") || "Proje geneli"), method: safeSpreadsheet(selectedTestText(result, req.id)), raw: safeSpreadsheet(req.parameter.rawRequest), limitations: safeSpreadsheet(req.parameter.limitations.join("; ")), owner: "", due: "", qa: "" }));
+  concepts.forEach((items) => { const parameter = items[0].parameter; reqSheet.addRow({ id: safeSpreadsheet(items.map((item) => item.id).join("; ")), level: safeSpreadsheet(conceptContexts(items)), group: parameter.group, tr: safeSpreadsheet(parameter.nameTr), en: safeSpreadsheet(parameter.officialName), symbol: parameter.symbol, unit: parameter.unit, path: safeSpreadsheet(parameter.gtsPath), context: safeSpreadsheet(items.map((item) => contextLabel(item)).join("; ")), analyses: safeSpreadsheet(conceptAnalyses(result, items).replace(/\n/g, "; ")), units: safeSpreadsheet(conceptUnits(result, items).replace(/\n/g, "; ")), method: safeSpreadsheet(conceptTests(result, items).replace(/\n/g, "; ")), raw: safeSpreadsheet(parameter.rawRequest), limitations: safeSpreadsheet(parameter.limitations.join("; ")), owner: "", due: "", qa: "" }); });
   const testSheet = workbook.addWorksheet(`${!result.engineeringUseAllowed ? "TASLAK_" : ""}03_DENEY_MATRISI`);
-  testSheet.columns = [{ header: "Deney ID", key: "id", width: 17 }, { header: "Deney", key: "name", width: 34 }, { header: "İngilizce ad", key: "nameEn", width: 35 }, { header: "Birincil standart", key: "primary", width: 34 }, { header: "Alternatif", key: "alternative", width: 34 }, { header: "Parametreler", key: "parameters", width: 40 }, { header: "Analizler", key: "analyses", width: 40 }, { header: "Birimler", key: "units", width: 35 }, { header: "Durum / birim eşlemesi", key: "applicability", width: 45 }, { header: "Ham teslimler", key: "raw", width: 70 }];
-  result.tests.forEach((item) => testSheet.addRow({ id: item.id, name: safeSpreadsheet(item.method.nameTr), nameEn: safeSpreadsheet(item.method.nameEn), primary: item.method.standardPrimary, alternative: item.method.standardAlternative ?? "", parameters: safeSpreadsheet(item.parameterIds.map((id) => parameterText(result, id)).join("; ")), analyses: safeSpreadsheet(item.analysisIds.map((id) => analysisText(result, id)).join("; ")), units: safeSpreadsheet(item.groundUnitIds.map((id) => unitText(result, id)).join("; ")), applicability: safeSpreadsheet(testApplicabilityText(result, item)), raw: safeSpreadsheet(item.method.rawDeliverables.join("; ")) }));
+  testSheet.columns = [{ header: "Deney ID", key: "id", width: 24 }, { header: "Deney", key: "name", width: 34 }, { header: "İngilizce ad", key: "nameEn", width: 35 }, { header: "Birincil standart", key: "primary", width: 34 }, { header: "Alternatif", key: "alternative", width: 34 }, { header: "Parametreler", key: "parameters", width: 40 }, { header: "Analizler", key: "analyses", width: 40 }, { header: "Birimler", key: "units", width: 35 }, { header: "Durum / birim eşlemesi", key: "applicability", width: 45 }, { header: "Uygulama / protokol ayrımları", key: "protocols", width: 60 }, { header: "Ham teslimler", key: "raw", width: 70 }];
+  groupedTests(result).forEach((items) => {
+    const item = items[0];
+    const links = items.flatMap((candidate) => candidate.requirementIds.map((requirementId) => `${requirementId}=>${candidate.id}`));
+    testSheet.addRow({
+      id: safeSpreadsheet(items.map((candidate) => candidate.id).join("; ")),
+      name: safeSpreadsheet(item.method.nameTr),
+      nameEn: safeSpreadsheet(item.method.nameEn),
+      primary: item.method.standardPrimary,
+      alternative: item.method.standardAlternative ?? "",
+      parameters: safeSpreadsheet(uniqueStrings(items.flatMap((candidate) => candidate.parameterIds)).map((id) => parameterText(result, id)).join("; ")),
+      analyses: safeSpreadsheet(uniqueStrings(items.flatMap((candidate) => candidate.analysisIds)).map((id) => analysisText(result, id)).join("; ")),
+      units: safeSpreadsheet(uniqueStrings(items.flatMap((candidate) => candidate.groundUnitIds)).map((id) => unitText(result, id)).join("; ")),
+      applicability: safeSpreadsheet(groupedTestApplicabilityText(result, items)),
+      protocols: safeSpreadsheet(items.map((candidate) => `${candidate.id}: ${testProtocolWorkText(result, candidate)}`).join("; ")),
+      raw: safeSpreadsheet(`${item.method.rawDeliverables.join("; ")}; ${links.join("; ")}`),
+    });
+  });
   const auditSheet = workbook.addWorksheet("99_AUDIT");
   auditSheet.state = "veryHidden";
   auditSheet.columns = [{ header: "Tür", width: 23 }, { header: "Kimlik / Değer", width: 80 }];
@@ -239,11 +388,19 @@ async function makeXlsx(result: CanonicalResult, path: string): Promise<void> {
 function pdfHtml(result: CanonicalResult): string {
   const a = audit(result);
   const isDraft = !result.engineeringUseAllowed;
-  const rows = result.requirements.map((req) => `<tr><td>${escapeHtml(req.id)}</td><td><b>${escapeHtml(req.parameter.nameTr)}</b><small>${escapeHtml(req.parameter.officialName)} · ${escapeHtml(req.parameter.symbol)} [${escapeHtml(req.parameter.unit)}]<br>Birincil deney: ${escapeHtml(selectedTestText(result, req.id))}</small></td><td>${escapeHtml(trLevel[req.level])}</td><td>${escapeHtml(contextLabel(req))}</td><td>${escapeHtml(req.analysisIds.map((id) => analysisText(result, id)).join("; "))}</td><td>${escapeHtml(req.groundUnitIds.map((id) => unitText(result, id)).join("; ") || "Proje geneli")}</td></tr>`).join("");
-  const rawRequests = result.requirements.map((req) => `<div class="raw-request"><b>${escapeHtml(req.id)} · ${escapeHtml(req.parameter.nameTr)}</b><small>Kullanım yeri: ${escapeHtml(req.parameter.gtsPath)}</small><p><b>Ham teslim talebi:</b> ${escapeHtml(req.parameter.rawRequest)}</p>${req.parameter.limitations.length ? `<p class="caution"><b>Dikkat:</b> ${escapeHtml(req.parameter.limitations.join(" "))}</p>` : ""}</div>`).join("");
-  const testRows = result.tests.map((item) => `<tr><td>${escapeHtml(item.id)}</td><td><b>${escapeHtml(item.method.nameTr)}</b><small>${escapeHtml(item.method.nameEn)}</small></td><td>${escapeHtml(item.method.standardPrimary)}</td><td>${escapeHtml(item.parameterIds.map((id) => parameterText(result, id)).join("; "))}<small>Durum / birimler: ${escapeHtml(testApplicabilityText(result, item))}</small></td><td>${escapeHtml(item.method.rawDeliverables.join("; "))}</td></tr>`).join("");
+  const concepts = parameterConcepts(result);
+  const rows = concepts.map((items) => { const parameter = items[0].parameter; return `<tr style="break-inside:avoid;page-break-inside:avoid"><td>${escapeHtml(items.map((item) => item.id).join("; "))}</td><td><b>${escapeHtml(parameter.nameTr)}</b><small>${escapeHtml(parameter.officialName)} · ${escapeHtml(parameter.symbol)} [${escapeHtml(parameter.unit)}]<br>Birincil deney: ${escapeHtml(conceptTests(result, items))}</small></td><td>${escapeHtml(items.map((item) => trLevel[item.level]).join("; "))}</td><td>${escapeHtml(items.map((item) => `${item.id} · ${contextLabel(item)}`).join("; "))}</td><td>${escapeHtml(conceptAnalyses(result, items))}</td><td>${escapeHtml(conceptUnits(result, items))}</td></tr>`; }).join("");
+  const rawRequests = concepts.map((items) => { const parameter = items[0].parameter; return `<div class="raw-request"><b>${escapeHtml(parameter.nameTr)}</b><small>Gereksinimler: ${escapeHtml(items.map((item) => item.id).join(", "))}<br>Kullanım yeri: ${escapeHtml(parameter.gtsPath)}</small><p><b>Ham teslim talebi:</b> ${escapeHtml(parameter.rawRequest)}</p>${parameter.limitations.length ? `<p class="caution"><b>Dikkat:</b> ${escapeHtml(parameter.limitations.join(" "))}</p>` : ""}</div>`; }).join("");
+  const testRows = groupedTests(result).map((items) => {
+    const item = items[0];
+    const parameterIds = uniqueStrings(items.flatMap((candidate) => candidate.parameterIds));
+    const applicability = groupedTestApplicabilityText(result, items);
+    const links = items.flatMap((candidate) => candidate.requirementIds.map((requirementId) => `<span>${escapeHtml(`${requirementId}=>${candidate.id}`)}</span>`)).join("");
+    const protocols = items.map((candidate) => `${candidate.id}: ${testProtocolWorkText(result, candidate)}`).join("; ");
+    return `<tr><td>${escapeHtml(items.map((candidate) => candidate.id).join("; "))}</td><td><b>${escapeHtml(item.method.nameTr)}</b><small>${escapeHtml(item.method.nameEn)}</small></td><td>${escapeHtml(item.method.standardPrimary)}</td><td>${escapeHtml(parameterIds.map((id) => parameterText(result, id)).join("; "))}<small><b>Uygulama / protokol:</b> ${escapeHtml(protocols)}</small><small>Durum / birimler: ${escapeHtml(applicability)}</small><small class="audit-id">${links}</small></td><td>${escapeHtml(item.method.rawDeliverables.join("; "))}</td></tr>`;
+  }).join("");
   const workRows = buildWorkOrderRows(result).map((item) => `<tr><td><b>${escapeHtml(item.kind)}</b><small>${escapeHtml(item.level)}</small></td><td><b>${escapeHtml(item.name)}</b><small>${escapeHtml(item.standard)}</small></td><td>${escapeHtml(item.units)}</td><td>${escapeHtml(item.outputs)}</td><td>${escapeHtml(item.raw)}</td></tr>`).join("");
-  return `<!doctype html><html lang="tr"><head><meta charset="utf-8"><style>@page{size:A4 landscape;margin:14mm 12mm 16mm}*{box-sizing:border-box}body{font-family:"Segoe UI",Arial,sans-serif;color:#203c47;font-size:8.5px;margin:0}h1{font-family:Georgia,serif;font-size:28px;letter-spacing:4px;color:#123d4a;margin:0}h2{font-family:Georgia,serif;color:#154b57;font-size:17px;margin:22px 0 8px}.cover{height:155mm;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center}.subtitle{color:#258f84;font-size:13px;letter-spacing:2px}.draft{margin:20px;padding:9px 14px;border:1px solid #b8565c;color:#9b3f47;font-weight:700}.meta{line-height:1.8}.work-lead{font-size:11px;line-height:1.5;padding:10px 13px;border-left:4px solid #2e9f94;background:#eaf5f2}.work-note{font-size:10px;padding:8px 10px;background:#fff2dd}.work-order{font-size:10px;line-height:1.35}.work-order th{font-size:10px;padding:8px}.work-order td{padding:7px}.work-order th:nth-child(1){width:15%}.work-order th:nth-child(2){width:19%}.work-order th:nth-child(3){width:15%}.work-order th:nth-child(4){width:22%}.work-order th:nth-child(5){width:29%}.warnings{padding:10px 16px;background:#fff2dd;border-left:4px solid #c08b37}.warnings p{margin:3px 0}.page{break-before:page}table{width:100%;border-collapse:collapse;table-layout:fixed}th{background:#123d4a;color:white;padding:6px;text-align:left}td{border:1px solid #d7dedb;padding:5px;vertical-align:top;word-break:break-word}tr:nth-child(even){background:#f3f1ea}td small,.raw-request small{display:block;color:#5d747a;margin-top:3px}.raw-request{break-inside:avoid;margin:0 0 5px;padding:6px 8px;border-left:3px solid #57a99f;background:#f1f7f5}.raw-request b{color:#154b57}.raw-request p{margin:3px 0 0;line-height:1.45}.raw-request .caution{color:#83472b}.footer{position:fixed;bottom:-10mm;left:0;right:0;text-align:center;color:${isDraft ? "#9b3f47" : "#77888b"};font-weight:${isDraft ? "700" : "400"};font-size:7px}</style></head><body><div class="footer">${isDraft ? "İNCELEME TASLAĞI · " : ""}GAIA ${escapeHtml(result.appVersion)} · ${escapeHtml(result.knowledgeVersion)} · ${escapeHtml(a.resultSha256)}</div><section class="cover"><h1>GAIA</h1><p class="subtitle">GTS NX GEOTEKNİK VERİ TALEBİ</p>${isDraft ? '<p class="draft">İNCELEME TASLAĞI — BAĞIMSIZ GEOTEKNİK UZMAN ONAYI GEREKLİDİR</p>' : ""}<div class="meta"><b>${escapeHtml(result.project.name)}</b><br>${escapeHtml(result.project.location || "—")}<br>${escapeHtml(result.project.client || "—")}</div></section><section class="page"><h2>GEOTEKNİK EKİP İÇİN İŞ EMRİ</h2><p class="work-lead"><b>Uygulama sırası:</b> Önce açık kararları netleştirin; ardından saha ve laboratuvar çalışmalarını planlayın; yorumlanmış sonuçlarla birlikte ham kayıtları teslim edin.</p><p class="work-note"><b>Program notu:</b> GAIA deney adedi veya sondaj derinliği uydurmaz. Geoteknik ekip, hedef birimler ve tasarım etki derinliğine göre adet/derinlik programını teklif etmelidir.</p><table class="work-order"><thead><tr><th>İş grubu / öncelik</th><th>Yapılacak iş</th><th>Uygulanacak birimler</th><th>Beklenen çıktılar</th><th>Ham kayıt ve dosyalar</th></tr></thead><tbody>${workRows}</tbody></table></section><section class="page"><h2>1. Kritik uyarılar</h2><div class="warnings">${result.warnings.map((w) => `<p>• ${escapeHtml(w)}</p>`).join("")}</div><h2>2. Teknik ek — birleştirilmiş parametre talepleri</h2><p>${result.requirements.length} benzersiz gereksinim; aynı mühendislik anlamındaki tekrarlar birleştirilmiştir.</p><table><thead><tr><th>ID</th><th>Talep</th><th>Durum</th><th>Bağlam</th><th>Analizler</th><th>Birimler</th></tr></thead><tbody>${rows}</tbody></table><h2>2.1 Ham veri teslim kapsamı</h2><p>Aşağıdaki ham kayıtlar, yalnız yorumlanmış sonuçlar yerine denetlenebilir veri iziyle birlikte teslim edilmelidir.</p>${rawRequests}</section><section class="page"><h2>3. Teknik deney matrisi ve ham teslimler</h2><table><thead><tr><th>ID</th><th>Deney</th><th>Standart</th><th>Parametreler</th><th>Ham teslim</th></tr></thead><tbody>${testRows}</tbody></table><h2>4. Kaynak ve sürüm izi</h2><p>Uygulama: ${escapeHtml(result.appVersion)}<br>Bilgi paketi: ${escapeHtml(result.knowledgeVersion)}<br>Bilgi özeti: ${escapeHtml(result.knowledgeDigest)}<br>Kanonik sonuç özeti: ${escapeHtml(a.resultSha256)}</p><h2>5. İnceleme ve imza</h2><p>Hazırlayan: ____________________ &nbsp; Tarih: __________<br><br>Geoteknik inceleyen: _______________ &nbsp; Tarih: __________<br><br>Onay: _____________________________</p></section></body></html>`;
+  return `<!doctype html><html lang="tr"><head><meta charset="utf-8"><style>@page{size:A4 landscape;margin:14mm 12mm 16mm}*{box-sizing:border-box}body{font-family:"Segoe UI",Arial,sans-serif;color:#203c47;font-size:8.5px;margin:0}h1{font-family:Georgia,serif;font-size:28px;letter-spacing:4px;color:#123d4a;margin:0}h2{font-family:Georgia,serif;color:#154b57;font-size:17px;margin:22px 0 8px}.cover{height:155mm;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center}.subtitle{color:#258f84;font-size:13px;letter-spacing:2px}.draft{margin:20px;padding:9px 14px;border:1px solid #b8565c;color:#9b3f47;font-weight:700}.meta{line-height:1.8}.work-lead{font-size:11px;line-height:1.5;padding:10px 13px;border-left:4px solid #2e9f94;background:#eaf5f2}.work-note{font-size:10px;padding:8px 10px;background:#fff2dd}.work-order{font-size:10px;line-height:1.35}.work-order th{font-size:10px;padding:8px}.work-order td{padding:7px}.work-order th:nth-child(1){width:15%}.work-order th:nth-child(2){width:19%}.work-order th:nth-child(3){width:15%}.work-order th:nth-child(4){width:22%}.work-order th:nth-child(5){width:29%}.warnings{padding:10px 16px;background:#fff2dd;border-left:4px solid #c08b37}.warnings p{margin:3px 0}.page{break-before:page}table{width:100%;border-collapse:collapse;table-layout:fixed}th{background:#123d4a;color:white;padding:6px;text-align:left}td{border:1px solid #d7dedb;padding:5px;vertical-align:top;word-break:break-word}tr:nth-child(even){background:#f3f1ea}td small,.raw-request small{display:block;color:#5d747a;margin-top:3px}.audit-id span{display:block;white-space:nowrap;font-size:6px}.raw-request{break-inside:avoid;margin:0 0 5px;padding:6px 8px;border-left:3px solid #57a99f;background:#f1f7f5}.raw-request b{color:#154b57}.raw-request p{margin:3px 0 0;line-height:1.45}.raw-request .caution{color:#83472b}.footer{position:fixed;bottom:-10mm;left:0;right:0;text-align:center;color:${isDraft ? "#9b3f47" : "#77888b"};font-weight:${isDraft ? "700" : "400"};font-size:7px}</style></head><body><div class="footer">${isDraft ? "İNCELEME TASLAĞI · " : ""}GAIA ${escapeHtml(result.appVersion)} · ${escapeHtml(result.knowledgeVersion)} · ${escapeHtml(a.resultSha256)}</div><section class="cover"><h1>GAIA</h1><p class="subtitle">GTS NX GEOTEKNİK VERİ TALEBİ</p>${isDraft ? '<p class="draft">İNCELEME TASLAĞI — BAĞIMSIZ GEOTEKNİK UZMAN ONAYI GEREKLİDİR</p>' : ""}<div class="meta"><b>${escapeHtml(result.project.name)}</b><br>${escapeHtml(result.project.location || "—")}<br>${escapeHtml(result.project.client || "—")}</div></section><section class="page"><h2>GEOTEKNİK EKİP İÇİN İŞ EMRİ</h2><p class="work-lead"><b>Uygulama sırası:</b> Önce açık kararları netleştirin; ardından saha ve laboratuvar çalışmalarını planlayın; yorumlanmış sonuçlarla birlikte ham kayıtları teslim edin.</p><p class="work-note"><b>Program notu:</b> GAIA deney adedi veya sondaj derinliği uydurmaz. Geoteknik ekip, hedef birimler ve tasarım etki derinliğine göre adet/derinlik programını teklif etmelidir.</p><table class="work-order"><thead><tr><th>İş grubu / öncelik</th><th>Yapılacak iş</th><th>Uygulanacak birimler</th><th>Beklenen çıktılar</th><th>Ham kayıt ve dosyalar</th></tr></thead><tbody>${workRows}</tbody></table></section><section class="page"><h2>1. Kritik uyarılar</h2><div class="warnings">${result.warnings.map((w) => `<p>• ${escapeHtml(w)}</p>`).join("")}</div><h2>2. Teknik ek — birleştirilmiş parametre talepleri</h2><p>${concepts.length} benzersiz parametre, ${result.requirements.length} mühendislik alt koşulu; aynı anlamdaki tekrarlar birleştirilmiştir.</p><table><thead><tr><th>ID</th><th>Parametre</th><th>Durum</th><th>Alt gereksinimler</th><th>Analizler</th><th>Birimler</th></tr></thead><tbody>${rows}</tbody></table><h2>2.1 Ham veri teslim kapsamı</h2><p>Aşağıdaki ham kayıtlar, yalnız yorumlanmış sonuçlar yerine denetlenebilir veri iziyle birlikte teslim edilmelidir.</p>${rawRequests}</section><section class="page"><h2>3. Teknik deney matrisi ve ham teslimler</h2><table><thead><tr><th>ID</th><th>Deney</th><th>Standart</th><th>Parametreler</th><th>Ham teslim</th></tr></thead><tbody>${testRows}</tbody></table><h2>4. Kaynak ve sürüm izi</h2><p>Uygulama: ${escapeHtml(result.appVersion)}<br>Bilgi paketi: ${escapeHtml(result.knowledgeVersion)}<br>Bilgi özeti: ${escapeHtml(result.knowledgeDigest)}<br>Kanonik sonuç özeti: ${escapeHtml(a.resultSha256)}</p><h2>5. İnceleme ve imza</h2><p>Hazırlayan: ____________________ &nbsp; Tarih: __________<br><br>Geoteknik inceleyen: _______________ &nbsp; Tarih: __________<br><br>Onay: _____________________________</p></section></body></html>`;
 }
 
 async function makePdf(result: CanonicalResult, path: string): Promise<void> {

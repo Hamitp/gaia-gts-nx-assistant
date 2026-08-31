@@ -48,13 +48,33 @@ const xlsxVisibleText = normalizeVisibleText(workbookText);
 const pdfVisibleText = normalizeVisibleText(pdfResult.text);
 const workSheet = workbook.worksheets.find((sheet) => sheet.name.includes("01_IS_EMRI"));
 if (!workSheet || workbook.worksheets[0] !== workSheet) throw new Error("XLSX ilk görünür sayfası geoteknik ekip iş emri değil.");
+const parameterSheet = workbook.worksheets.find((sheet) => sheet.name.includes("02_PARAMETRELER"));
+if (!parameterSheet) throw new Error("XLSX parametre sayfası bulunamadı.");
+const cohesionRows = (parameterSheet.getRows(2, Math.max(0, parameterSheet.rowCount - 1)) ?? []).filter((row) => String(row.getCell(4).value ?? "") === "Efektif kohezyon");
+if (cohesionRows.length !== 1) throw new Error(`Genel ve drenajlı-pik efektif kohezyon talebi tekilleştirilemedi. Beklenen 1, bulunan ${cohesionRows.length}.`);
+if (!String(cohesionRows[0].getCell(10).value ?? "").includes("pile-soil")) throw new Error("Tekilleştirilmiş efektif kohezyon satırında kazık-zemin analizi izi kayboldu.");
 const workSheetText = normalizeVisibleText(workSheet.getSheetValues().flat(Infinity).map(String).join(" "));
 if (/REQ-[A-F0-9]{8}|TST-[A-F0-9]{8}|=>/.test(workSheetText)) throw new Error("XLSX görünür iş emrinde makine kimliği/bağlantı kodu bulunuyor.");
 const workRows = workSheet.getRows(4, Math.max(0, workSheet.rowCount - 3)) ?? [];
 const visibleWorkRows = workRows.map((row) => ({ kind: String(row.getCell(1).value ?? ""), name: String(row.getCell(3).value ?? ""), units: String(row.getCell(5).value ?? ""), outputs: String(row.getCell(6).value ?? ""), raw: String(row.getCell(7).value ?? "") })).filter((row) => row.name);
 const testWorkRows = visibleWorkRows.filter((row) => row.kind === "SAHA ÇALIŞMASI" || row.kind === "LABORATUVAR DENEYİ");
-if (testWorkRows.length !== expectedTests.length) throw new Error(`XLSX sade iş emrinde deney tekilleştirmesi başarısız. Beklenen ${expectedTests.length}, bulunan ${testWorkRows.length}.`);
+const technicalTestSheet = workbook.worksheets.find((sheet) => sheet.name.includes("03_DENEY_MATRISI"));
+if (!technicalTestSheet) throw new Error("XLSX teknik deney matrisi bulunamadı.");
+const technicalRows = technicalTestSheet.getRows(2, Math.max(0, technicalTestSheet.rowCount - 1)) ?? [];
+const expectedVisibleTestNames = new Set(technicalRows.map((row) => String(row.getCell(2).value ?? "")).filter(Boolean));
+if (testWorkRows.length !== expectedVisibleTestNames.size) throw new Error(`XLSX sade iş emrinde deney tekilleştirmesi başarısız. Beklenen ${expectedVisibleTestNames.size}, bulunan ${testWorkRows.length}.`);
 if (new Set(testWorkRows.map((row) => row.name)).size !== testWorkRows.length) throw new Error("XLSX sade iş emrinde tekrarlı deney adı bulundu.");
+const visibleTechnicalTestIds = ids(technicalRows.map((row) => String(row.getCell(1).value ?? "")).join(" "), "TST");
+assertEqual("XLSX görünür teknik deney/protokol", visibleTechnicalTestIds, expectedTests);
+for (const row of technicalRows) {
+  const methodName = String(row.getCell(2).value ?? "");
+  const rowTestIds = ids(String(row.getCell(1).value ?? ""), "TST");
+  if (rowTestIds.length < 2) continue;
+  const protocolEntries = String(row.getCell(10).value ?? "").split(/;\s+(?=TST-)/).map((item) => item.replace(/^TST-[A-F0-9]{8}:\s*/, "").trim()).filter(Boolean);
+  if (protocolEntries.length !== rowTestIds.length) throw new Error(`${methodName} için ayrı numune/protokol açıklamaları eksik.`);
+  const workRow = testWorkRows.find((item) => item.name === methodName);
+  if (!workRow || protocolEntries.some((protocol) => !workRow.outputs.includes(protocol))) throw new Error(`${methodName} protokol ayrımları sade iş emrinde görünmüyor.`);
+}
 for (const row of visibleWorkRows) {
   if (!row.units || !row.outputs || !row.raw) throw new Error(`XLSX iş emri satırı eksik: ${row.name}`);
   const expectedName = normalizeVisibleText(row.name);
@@ -65,9 +85,9 @@ for (const content of [docxVisibleText, pdfVisibleText, xlsxVisibleText]) {
   if (!content.toLocaleLowerCase("tr").includes("geoteknik ekip için iş emri")) throw new Error("Sade iş emri başlığı üç formatın birinde eksik.");
 }
 
-const assertEqual = (label, actual, expected) => {
+function assertEqual(label, actual, expected) {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`${label} paritesi başarısız. Beklenen ${expected.length}, bulunan ${actual.length}.`);
-};
+}
 assertEqual("DOCX gereksinim", docxRequirements, expectedRequirements);
 assertEqual("DOCX deney", docxTests, expectedTests);
 assertEqual("XLSX gereksinim", xlsxRequirements, expectedRequirements);

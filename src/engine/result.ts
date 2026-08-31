@@ -2,7 +2,7 @@ import type { CanonicalResult, GaiaProject, KnowledgePackage } from "../domain/t
 import { consolidateRequirements, consolidateTests } from "./requirements.js";
 import { recommendModels } from "./recommend.js";
 
-export const APP_VERSION = "0.1.0-review.3";
+export const APP_VERSION = "0.1.0-review.4";
 
 export function buildWarnings(project: GaiaProject, knowledge: KnowledgePackage): string[] {
   const warnings: string[] = [];

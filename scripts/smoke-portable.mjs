@@ -4,7 +4,7 @@ import net from "node:net";
 import { resolve } from "node:path";
 import { spawn } from "node:child_process";
 
-const executablePath = resolve(process.argv[2] ?? "release/GAIA-Portable-0.1.0-review.3-x64.exe");
+const executablePath = resolve(process.argv[2] ?? "release/GAIA-Portable-0.1.0-review.4-x64.exe");
 const userDataDir = resolve("test-results", `portable-smoke-${Date.now()}`);
 rmSync(userDataDir, { recursive: true, force: true });
 

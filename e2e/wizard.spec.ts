@@ -41,6 +41,13 @@ test("yeni projeden tekrarsız sonuç ekranına kesintisiz ilerler", async () =>
   await page.getByRole("button", { name: /Devam et/i }).click();
   await page.getByRole("button", { name: /Yaklaşık sabit/i }).click();
   await page.getByRole("button", { name: /Her ikisi/i }).click();
+  const constructionToggle = page.getByRole("checkbox", { name: /Yapım aşamaları/i });
+  const constructionToggleCard = page.locator("label.toggle-card").filter({ hasText: "Yapım aşamaları" });
+  await expect(constructionToggle).toBeChecked();
+  await constructionToggleCard.click();
+  await expect(constructionToggle).not.toBeChecked();
+  await constructionToggleCard.click();
+  await expect(constructionToggle).toBeChecked();
   await page.getByRole("button", { name: /Devam et/i }).click();
   await expect(page.getByText(/0 \/ 3/)).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
@@ -52,15 +59,27 @@ test("yeni projeden tekrarsız sonuç ekranına kesintisiz ilerler", async () =>
   }
   await expect(page.getByText(/3 \/ 3/)).toBeVisible();
   await page.getByRole("button", { name: /Devam et/i }).click();
-  await expect(page.getByRole("heading", { name: /Geoteknik ekibin uygulayabileceği/i })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Uzman incelemesi için tekrarsız/i })).toBeVisible();
   await expect(page.getByTestId("geotechnical-work-order")).toBeVisible();
   await expect(page.getByText(/parametre \/ mühendislik koşulu/i)).toBeVisible();
   await expect(page.getByText("Efektif içsel sürtünme açısı").first()).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
   await page.screenshot({ path: "test-results/gaia-work-order.png", fullPage: true });
+  const exportRoot = path.resolve("test-results", "interactive-export");
+  fs.rmSync(exportRoot, { recursive: true, force: true });
+  fs.mkdirSync(exportRoot, { recursive: true });
+  await application.evaluate(({ dialog, shell }, destination) => {
+    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [destination] });
+    shell.showItemInFolder = () => undefined;
+  }, exportRoot);
+  await page.getByRole("button", { name: /Taslak DOCX, PDF ve Excel oluştur/i }).click();
+  await expect(page.getByRole("status")).toContainText(/DOCX, PDF ve Excel hazır/i);
+  await expect.poll(() => {
+    const folders = fs.readdirSync(exportRoot, { withFileTypes: true }).filter((entry) => entry.isDirectory());
+    return folders.length === 1 ? fs.readdirSync(path.join(exportRoot, folders[0].name)).length : 0;
+  }).toBe(4);
   await page.getByRole("tab", { name: /Deney matrisi/i }).click();
-  await expect(page.locator(".test-program-table .variant-list b").filter({ hasText: /^Zorunlu$/ }).first()).toBeVisible();
-  await expect(page.locator(".test-program-table .variant-list small").filter({ hasText: /^Kum Tabakası$/ }).first()).toBeVisible();
+  await expect(page.locator(".test-program-table .variant-list small").filter({ hasText: /Mutlaka gerekli: Kum Tabakası/i }).first()).toBeVisible();
   await page.screenshot({ path: "test-results/gaia-result.png", fullPage: true });
   await application.close();
 });
@@ -102,7 +121,7 @@ test("tümü kilitli konsolidasyon modellerinde karar verisi talebiyle ilerler",
   await expect(nextButton).toBeEnabled();
   await nextButton.click();
 
-  await expect(page.getByRole("heading", { name: /Geoteknik ekibin uygulayabileceği/i })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Uzman incelemesi için tekrarsız/i })).toBeVisible();
   await expect(page.getByTestId("geotechnical-work-order").getByText("Malzeme modeli karar veri paketi", { exact: true })).toHaveCount(1);
   await page.getByRole("tab", { name: /Model kararları/i }).click();
   await expect(page.getByText(/Model seçilmedi; karar verisi istendi/i)).toBeVisible();

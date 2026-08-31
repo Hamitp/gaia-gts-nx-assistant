@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, session } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, session, shell } from "electron";
 import { execFile } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -93,6 +93,7 @@ function registerIpc(): void {
       const answer = await dialog.showOpenDialog(mainWindow!, { title: "Talep paketinin kaydedileceği klasörü seçin", properties: ["openDirectory", "createDirectory"] });
       if (answer.canceled || !answer.filePaths[0]) return { canceled: true };
       const exported = await exportBundle(result, answer.filePaths[0]);
+      shell.showItemInFolder(exported.files[0]);
       return { canceled: false, ...exported };
     } catch (error) { return { canceled: false, error: `Dışa aktarım tamamlanamadı; yarım paket bırakılmadı. ${errorMessage(error)}` }; }
   });

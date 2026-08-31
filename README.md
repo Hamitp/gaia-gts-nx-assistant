@@ -4,7 +4,7 @@ GAIA, GTS NX ile yapılacak bir veya birden fazla geoteknik analiz için ihtiya�
 
 ## Güncel durum
 
-Bu depo `0.1.0-review.3` inceleme sürümüdür. Analiz seçimi mühendislik amaçları üzerinden, model seçimi tek karar kuyruğunda ve geoteknik talebi sade bir iş emri olarak sunulur. Yerleşik bilgi paketi bağımsız geoteknik uzman tarafından satır düzeyinde onaylanmadığı için bütün çıktılar `İNCELEME TASLAĞI` olarak üretilir. Uygulama parametre değeri hesaplamaz, korelasyon sonucu üretmez ve eksik mühendislik kararını sessiz varsayımla tamamlamaz.
+Bu depo `0.1.0-review.4` inceleme sürümüdür. Analiz seçimi mühendislik amaçları üzerinden, model seçimi tek karar kuyruğunda ve geoteknik talebi sade bir uzman inceleme taslağı olarak sunulur. Yerleşik bilgi paketi bağımsız geoteknik uzman tarafından satır düzeyinde onaylanmadığı için bütün çıktılar `İNCELEME TASLAĞI` olarak üretilir. Uygulama parametre değeri hesaplamaz, korelasyon sonucu üretmez ve eksik mühendislik kararını sessiz varsayımla tamamlamaz.
 
 Review sürümünde yalnız doğrulanmış çekirdek Elastic ve Mohr–Coulomb model seçimleri açıktır; kısmi ve kilitli katalog modelleri incelenebilir fakat seçilemez. Bu sürüm resmî tasarım veya saha deney programı yayımlamak için kullanılmamalıdır.
 
